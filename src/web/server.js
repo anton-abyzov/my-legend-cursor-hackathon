@@ -354,6 +354,19 @@ function urlForRunPath(filePath) {
   return mountPath(`/outputs/${rel.split(path.sep).map(encodeURIComponent).join("/")}`);
 }
 
+function compactShare(job) {
+  if (job.status !== "complete" || !job.result?.outputUrl) return null;
+  return {
+    jobId: job.id,
+    title: job.sideQuest || job.title,
+    questSlug: job.questSlug || null,
+    traveler: job.persona || null,
+    outputUrl: job.result.outputUrl,
+    score: job.grade?.score ?? null,
+    completedAt: job.updatedAt || job.createdAt
+  };
+}
+
 function compactJob(job) {
   return {
     id: job.id,
@@ -792,6 +805,34 @@ router.get("/api/quests/:id", allowGuest, async (req, res, next) => {
   try {
     const job = await readJob(req.params.id);
     res.json({ job: compactJob(job) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/api/share/:id", allowGuest, async (req, res, next) => {
+  try {
+    const id = String(req.params.id || "");
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+      res.status(400).json({ error: "invalid_job_id" });
+      return;
+    }
+    let job;
+    try {
+      job = await readJob(id);
+    } catch (error) {
+      if (error && error.code === "ENOENT") {
+        res.status(404).json({ error: "not_found" });
+        return;
+      }
+      throw error;
+    }
+    const share = compactShare(job);
+    if (!share) {
+      res.status(404).json({ error: "share_not_ready" });
+      return;
+    }
+    res.json({ share });
   } catch (error) {
     next(error);
   }

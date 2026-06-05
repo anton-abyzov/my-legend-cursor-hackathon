@@ -1,13 +1,34 @@
+const fs = require("node:fs/promises");
 const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { createHyperframesProject, renderHyperframesProject } = require("./engine/hyperframesProject");
+const { gradeQuest } = require("./engine/questGrader");
+const { resolveTool } = require("./engine/ffmpegPaths");
+const { runProcess } = require("./engine/process");
 const questStore = require("./web/lib/questStore");
 
 let mainWindow;
 
 function runsRoot() {
   return process.env.LEGEND_RUNS_DIR || path.join(app.getPath("userData"), "runs");
+}
+
+async function probeOutput(filePath) {
+  try {
+    const { stdout } = await runProcess(resolveTool("ffprobe"), [
+      "-v",
+      "error",
+      "-print_format",
+      "json",
+      "-show_entries",
+      "format=duration,size:stream=codec_type,width,height,r_frame_rate",
+      filePath
+    ]);
+    return JSON.parse(stdout);
+  } catch (error) {
+    return { error: error.message };
+  }
 }
 
 function createWindow() {
@@ -70,13 +91,39 @@ ipcMain.handle("project:generate", async (event, payload) => {
 });
 
 ipcMain.handle("project:render", async (event, payload) => {
-  const result = await renderHyperframesProject(payload, {
-    onLog: (line) => event.sender.send("job:log", line)
-  });
-  return {
+  const onLog = (line) => event.sender.send("job:log", line);
+  const result = await renderHyperframesProject(payload, { onLog });
+  const output = {
     ...result,
     outputUrl: pathToFileURL(result.outputPath).toString()
   };
+
+  try {
+    const planPath = path.join(payload.projectDir, "plan.json");
+    const planDoc = JSON.parse(await fs.readFile(planPath, "utf8"));
+    const probe = await probeOutput(result.outputPath);
+    onLog("Grading output against the request\n");
+    output.grade = await gradeQuest(
+      {
+        prompt: payload.prompt,
+        persona: payload.audience,
+        sideQuest: payload.sideQuest,
+        aspect: payload.aspect,
+        targetDuration: payload.targetDuration,
+        plan: planDoc.plan,
+        finalVideo: result.outputPath,
+        totalDuration: planDoc.totalDuration,
+        clipCount: (planDoc.timeline || []).length,
+        probe
+      },
+      { onLog }
+    );
+    onLog(`Grade: ${output.grade.score}/10 (${output.grade.verdict}) via ${output.grade.provider}\n`);
+  } catch (error) {
+    onLog(`Grading skipped: ${error.message}\n`);
+  }
+
+  return output;
 });
 
 ipcMain.handle("quests:recommend", (_event, filters) => questStore.recommend(filters || {}, { limit: 60 }));

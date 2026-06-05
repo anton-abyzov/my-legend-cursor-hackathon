@@ -148,6 +148,21 @@
 
   /* ── AI verification / grade ── */
   .ly-verify-video { width: 100%; border-radius: 14px; overflow: hidden; border: 1px solid var(--line-strong); background: #000; display: block; box-shadow: 0 0 30px color-mix(in oklab, var(--glow), transparent 60%); }
+  .ly-verify-flip { width: 100%; margin-top: 22px; }
+  .ly-verify-flip-head { font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 10px; }
+  .ly-verify-flip-card { width: 100%; border: none; padding: 0; background: transparent; cursor: pointer; perspective: 1100px; text-align: left; }
+  .ly-verify-flip-inner { position: relative; width: 100%; min-height: 188px; transform-style: preserve-3d; transition: transform .72s cubic-bezier(.4,0,.2,1); }
+  .ly-verify-flip-inner.is-flipped { transform: rotateY(180deg); }
+  .ly-verify-flip-side { position: absolute; inset: 0; -webkit-backface-visibility: hidden; backface-visibility: hidden; border-radius: 18px; background: #1a1a2e; border: 1px solid var(--line-strong); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--primary), transparent 86%), 0 0 34px color-mix(in oklab, var(--glow), transparent 62%); padding: 22px 20px; display: flex; flex-direction: column; justify-content: center; }
+  .ly-verify-flip-back { transform: rotateY(180deg); justify-content: flex-start; min-height: 248px; }
+  .ly-verify-flip-score { font-family: var(--heading); font-weight: 400; font-size: 72px; line-height: 0.82; color: var(--primary); text-shadow: 0 0 28px var(--glow); }
+  .ly-verify-flip-score sub { font-family: var(--mono); font-size: 15px; font-weight: 700; color: var(--ink-faint); vertical-align: baseline; margin-left: 2px; }
+  .ly-verify-flip-verdict { font-family: var(--body); font-weight: 700; text-transform: uppercase; font-size: 22px; letter-spacing: 0.04em; color: var(--ink); margin-top: 10px; line-height: 1; }
+  .ly-verify-flip-tier { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em; color: var(--ink-faint); margin-top: 8px; text-transform: lowercase; }
+  .ly-verify-flip-hint { margin-top: auto; padding-top: 14px; font-family: var(--mono); font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-faint); opacity: 0.7; }
+  .ly-verify-flip-bars { display: flex; flex-direction: column; gap: 11px; width: 100%; }
+  .ly-verify-flip-note { margin: 14px 0 0; font-family: var(--mono); font-size: 10.5px; line-height: 1.55; color: var(--ink-soft); }
+  .ly-verify-flip-gaps { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
   .ly-grade { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 20px; box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--primary), transparent 86%); }
   .ly-grade-head { display: flex; align-items: center; gap: 16px; }
   .ly-grade-score { font-family: var(--heading); font-weight: 400; font-size: 62px; line-height: 0.82; color: var(--primary); text-shadow: 0 0 22px var(--glow); }
@@ -281,7 +296,16 @@
 
 <script type="text/babel">
 const STORE = 'leyend_v2';
-const DEFAULT_STATE = { screen: 'welcome', answers: {}, quest: null, active: null, done: [], completed: [], proof: null, jobId: null, job: null };
+const DEFAULT_STATE = { screen: 'welcome', answers: {}, quest: null, active: null, done: [], completed: [], proof: null, jobId: null, job: null, publicShare: false };
+
+function shareJobIdFromLocation() {
+  const bp = (window.LEGEND_CFG && window.LEGEND_CFG.basePath) || '';
+  const path = window.location.pathname || '/';
+  const esc = bp.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const m = path.match(new RegExp(`^${esc}/s/([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$`, 'i'));
+  if (m) return m[1];
+  return new URLSearchParams(window.location.search).get('share');
+}
 
 // The showcase ALWAYS opens on the LEGEND welcome screen (slide 1), regardless
 // of any persisted progress — forward navigation through the flow still works.
@@ -371,8 +395,40 @@ function App() {
   const triggerType = (t.trigger || 'Dice').toLowerCase();
 
   const [st, setSt] = React.useState(loadState);
+  const [shareBoot, setShareBoot] = React.useState(() => ({ loading: Boolean(shareJobIdFromLocation()), err: null }));
   React.useEffect(() => { try { localStorage.setItem(STORE, JSON.stringify(st)); } catch (e) {} }, [st]);
   const set = (patch) => setSt(s => ({ ...s, ...patch }));
+
+  React.useEffect(() => {
+    const jobId = shareJobIdFromLocation();
+    if (!jobId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(lyApiPath(`/api/share/${jobId}`));
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.message || body.error || 'Share not found');
+        const share = body.share;
+        const quest = (typeof QUESTS !== 'undefined' && QUESTS.find(q => q.id === share.questSlug))
+          || { id: share.questSlug || 'shared', title: share.title, sigil: '✦', essence: '' };
+        const proof = share.outputUrl ? [{ src: share.outputUrl, kind: 'video' }] : null;
+        if (cancelled) return;
+        setSt(s => ({
+          ...s,
+          screen: 'share',
+          quest,
+          proof,
+          jobId: share.jobId,
+          publicShare: true,
+          answers: { ...s.answers, legend: share.traveler || s.answers.legend },
+        }));
+        setShareBoot({ loading: false, err: null });
+      } catch (e) {
+        if (!cancelled) setShareBoot({ loading: false, err: e.message || 'Share not found' });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const [wide, setWide] = React.useState(typeof window !== 'undefined' ? window.innerWidth >= 980 : true);
   React.useEffect(() => {
@@ -399,8 +455,11 @@ function App() {
   const onSealLegend = (job) => {
     const q = st.quest || st.active;
     const date = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    const c = { id: q.id, title: q.title, sigil: q.sigil, date, proof: null, score: job && job.grade ? job.grade.score : null, outputUrl: job && job.result ? job.result.outputUrl : null };
-    setSt(s => ({ ...s, completed: [c, ...s.completed.filter(x => x.id !== c.id)], active: null, proof: null, screen: 'complete' }));
+    const outputUrl = job && job.result ? job.result.outputUrl : null;
+    const proof = outputUrl ? [{ src: outputUrl, kind: 'video' }] : null;
+    const jobId = job ? job.id : st.jobId;
+    const c = { id: q.id, title: q.title, sigil: q.sigil, date, proof, score: job && job.grade ? job.grade.score : null, outputUrl, jobId };
+    setSt(s => ({ ...s, completed: [c, ...s.completed.filter(x => x.id !== c.id)], active: null, proof, jobId, screen: 'complete' }));
   };
   const onSubmitProof = (proof) => {
     const date = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -411,9 +470,27 @@ function App() {
   const restart = () => { try { localStorage.removeItem(STORE); } catch (e) {} setSt({ ...DEFAULT_STATE }); };
 
   const exclude = [...completedIds, st.quest ? st.quest.id : null].filter(Boolean);
+  const latest = st.completed[0] || null;
+  const shareOutputUrl = (st.proof && st.proof[0] && st.proof[0].src) || latest?.outputUrl || null;
+  const shareJobId = st.jobId || latest?.jobId || null;
 
   let screen;
-  switch (st.screen) {
+  if (shareBoot.loading) {
+    screen = (
+      <Screen top={70} bottom={44} center contentStyle={{ justifyContent: 'center', alignItems: 'center', textAlign: 'center' }}>
+        <div className="ly-eyebrow" style={{ justifyContent: 'center' }}><span className="ly-tick" />Opening legend</div>
+        <p className="ly-note" style={{ textAlign: 'center', marginTop: 12 }}>Loading shared quest…</p>
+      </Screen>
+    );
+  } else if (shareBoot.err && shareJobIdFromLocation()) {
+    screen = (
+      <Screen top={70} bottom={44} center contentStyle={{ justifyContent: 'center', alignItems: 'center', textAlign: 'center' }}>
+        <div className="ly-eyebrow" style={{ justifyContent: 'center' }}><span className="ly-tick" />Share unavailable</div>
+        <p className="ly-note" style={{ textAlign: 'center', marginTop: 12 }}>{shareBoot.err}</p>
+        <Btn onClick={() => { window.location.href = (window.LEGEND_CFG && window.LEGEND_CFG.basePath) || '/'; }} style={{ marginTop: 24 }}>Go to Legend</Btn>
+      </Screen>
+    );
+  } else switch (st.screen) {
     case 'signin': screen = <SignInScreen onContinue={onSignInComplete} onBack={() => go('welcome')} />; break;
     case 'quiz': screen = <QuizScreen onComplete={onQuiz} onBack={() => go('welcome')} />; break;
     case 'seek': screen = <SeekScreen triggerType={triggerType} answers={st.answers} exclude={exclude} onReveal={onReveal} onBack={() => go(st.completed.length || st.active ? 'journal' : 'quiz')} />; break;
@@ -422,8 +499,8 @@ function App() {
     case 'cooking': screen = <CookingScreen jobId={st.jobId} quest={st.quest || st.active} onVerify={onVerify} onRetry={onRetryUpload} onBack={() => go('journal')} />; break;
     case 'verify': screen = <VerifyScreen job={st.job} quest={st.quest || st.active} onSeal={onSealLegend} onRetry={onRetryUpload} />; break;
     case 'proof': screen = <ProofScreen quest={st.quest} onSubmit={onSubmitProof} onBack={() => go('journal')} />; break;
-    case 'complete': screen = <CompleteScreen quest={st.quest} tagline={tagline} proof={st.proof} onShare={() => go('share')} onJournal={() => go('journal')} />; break;
-    case 'share': screen = <ShareScreen quest={st.quest} tagline={tagline} completed={st.completed.length} proof={st.proof} toast={toast} onBack={() => go(st.completed.length ? 'journal' : 'complete')} />; break;
+    case 'complete': screen = <CompleteScreen quest={st.quest} tagline={tagline} proof={st.proof} outputUrl={shareOutputUrl} onShare={() => go('share')} onJournal={() => go('journal')} />; break;
+    case 'share': screen = <ShareScreen quest={st.quest} tagline={tagline} completed={st.completed.length} proof={st.proof} outputUrl={shareOutputUrl} jobId={shareJobId} publicView={st.publicShare} toast={toast} onBack={() => go(st.completed.length && !st.publicShare ? 'journal' : 'complete')} />; break;
     case 'journal': screen = <JournalScreen tagline={tagline} completed={st.completed} active={st.active} onSeek={() => go('seek')} onOpenActive={onOpenActive} />; break;
     default: screen = <WelcomeScreen onBegin={onBegin} onSignIn={onSignIn} />;
   }

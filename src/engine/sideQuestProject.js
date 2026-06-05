@@ -123,7 +123,7 @@ function labelEntries(plan, timeline, totalDuration) {
       end: Math.max(start + 0.6, end),
       side: index % 2 === 0 ? "left" : "right",
       label: beat.label || (index === 0 ? "HOOK" : `BEAT ${index + 1}`),
-      caption: beat.caption || shot.label || "Keep the strongest moment."
+      caption: beat.caption || "Keep the strongest moment."
     };
   });
 }
@@ -138,10 +138,6 @@ function buildIndexHtml(plan, payload, timeline, baseVideoName) {
   const title = escapeHtml(plan.title);
   const thesis = escapeHtml(plan.thesis);
   const labels = labelEntries(plan, timeline, totalDuration);
-  const sourceRail = timeline
-    .slice(0, 5)
-    .map((shot, index) => `<span>${String(index + 1).padStart(2, "0")} ${escapeHtml(shot.sourceName)}</span>`)
-    .join("");
   const labelMarkup = labels
     .map((label) => `
       <div id="${label.id}" class="quest-label ${label.side}">
@@ -317,7 +313,7 @@ function buildIndexHtml(plan, payload, timeline, baseVideoName) {
       </section>
       ${labelMarkup}
       <div class="topbar"><div><i class="mark"></i>${escapeHtml(plan.styleName)}</div><div class="timer">${totalDuration}S</div></div>
-      <div class="rail"><div class="source-rail">${sourceRail}</div><div class="progress"><div class="progress-fill"></div></div></div>
+      <div class="rail"><div class="progress"><div class="progress-fill"></div></div></div>
     </div>
     <script>
       window.__timelines = window.__timelines || {};

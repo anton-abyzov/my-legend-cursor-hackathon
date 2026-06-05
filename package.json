@@ -7,18 +7,41 @@
   "scripts": {
     "start": "electron .",
     "web": "node src/web/server.js",
+    "pack": "electron-builder --dir",
+    "dist:mac": "electron-builder --mac dmg zip",
     "test:e2e": "playwright test",
     "build:quests": "node scripts/buildSideQuests.js",
     "seed:supabase": "node scripts/seedSupabase.js",
     "doctor": "npx --yes hyperframes@0.6.70 doctor",
     "hf:doctor": "npx --yes hyperframes@0.6.70 doctor"
   },
+  "build": {
+    "appId": "com.legend.hyperframes",
+    "productName": "Legend HyperFrames",
+    "asar": true,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "data/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.video",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    }
+  },
   "engines": {
     "node": ">=22"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
-    "electron": "^42.3.3"
+    "electron": "^42.3.3",
+    "electron-builder": "^26.8.1"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1062.0",

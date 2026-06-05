@@ -25,6 +25,7 @@ const els = {
   revealRender: document.getElementById("revealRender"),
   cutPlan: document.getElementById("cutPlan"),
   previewSlot: document.getElementById("previewSlot"),
+  gradeCard: document.getElementById("gradeCard"),
   logOutput: document.getElementById("logOutput"),
   clearLog: document.getElementById("clearLog"),
   questSlot: document.getElementById("questSlot"),
@@ -101,15 +102,88 @@ function renderCutPlan(project) {
     .join("");
 }
 
+const BREAKDOWN_LABELS = {
+  promptMatch: "Prompt match",
+  visualQuality: "Visual quality",
+  pacing: "Pacing",
+  audienceFit: "Audience fit"
+};
+
+function gradeTone(score) {
+  if (score >= 8.5) return "is-ships";
+  if (score >= 7) return "is-strong";
+  if (score >= 5) return "is-passable";
+  return "is-weak";
+}
+
+function renderGrade(grade) {
+  if (!grade) {
+    els.gradeCard.classList.add("is-hidden");
+    els.gradeCard.innerHTML = "";
+    return;
+  }
+
+  const score = Number(grade.score || 0);
+  const verdict = String(grade.verdict || "Judged").toUpperCase();
+  const tier = [grade.provider, grade.model].filter(Boolean).join(" · ") || "heuristic · deterministic";
+  const bars = Object.entries(grade.breakdown || {})
+    .map(([key, value]) => {
+      const pct = Math.max(0, Math.min(100, Number(value) * 10));
+      return `
+        <div class="grade-bar">
+          <span>${BREAKDOWN_LABELS[key] || key}</span>
+          <div class="grade-track"><div class="grade-fill" style="width:${pct}%"></div></div>
+          <em>${Number(value).toFixed(1)}</em>
+        </div>`;
+    })
+    .join("");
+
+  const gaps = (grade.gaps || []).length
+    ? `<div class="grade-flip-gaps">${grade.gaps.map((g) => `<div class="grade-gap">${escapeHtml(g)}</div>`).join("")}</div>`
+    : "";
+
+  els.gradeCard.className = `grade-card grade-flip ${gradeTone(score)}`;
+  els.gradeCard.classList.remove("is-hidden");
+  els.gradeCard.innerHTML = `
+    <div class="grade-flip-head">AI verification</div>
+    <button type="button" class="grade-flip-card" aria-label="Toggle AI verification details">
+      <div class="grade-flip-inner">
+        <div class="grade-flip-side grade-flip-front">
+          <div class="grade-flip-score"><strong>${score.toFixed(1)}</strong><span>/10</span></div>
+          <div class="grade-flip-verdict">${escapeHtml(verdict)}</div>
+          <div class="grade-flip-tier">${escapeHtml(tier)}</div>
+          <div class="grade-flip-hint">tap for breakdown</div>
+        </div>
+        <div class="grade-flip-side grade-flip-back">
+          <div class="grade-bars">${bars}</div>
+          ${grade.rationale ? `<p class="grade-flip-note">${escapeHtml(grade.rationale)}</p>` : ""}
+          ${gaps}
+          <div class="grade-flip-hint">tap for score</div>
+        </div>
+      </div>
+    </button>`;
+
+  const toggle = els.gradeCard.querySelector(".grade-flip-card");
+  const inner = els.gradeCard.querySelector(".grade-flip-inner");
+  if (toggle && inner) {
+    toggle.addEventListener("click", () => {
+      const flipped = inner.classList.toggle("is-flipped");
+      toggle.setAttribute("aria-pressed", flipped ? "true" : "false");
+    });
+  }
+}
+
 function renderPreview(render) {
   if (!render) {
     els.previewSlot.innerHTML = '<div class="preview-empty">Render output appears here</div>';
+    renderGrade(null);
     return;
   }
 
   els.previewSlot.innerHTML = `
     <video controls src="${render.outputUrl}"></video>
   `;
+  renderGrade(render.grade || null);
 }
 
 function escapeHtml(value) {
@@ -362,6 +436,7 @@ els.renderProject.addEventListener("click", async () => {
   appendLog("\n--- Render MP4 ---\n");
   try {
     const render = await window.legend.renderProject({
+      ...payload(),
       projectDir: state.project.projectDir,
       quality: els.quality.value,
       fps: 30

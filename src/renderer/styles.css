@@ -391,6 +391,11 @@ button:disabled { cursor: not-allowed; opacity: 0.34; box-shadow: none !importan
   overflow: hidden;
 }
 
+.preview-panel {
+  display: flex;
+  flex-direction: column;
+}
+
 .cut-plan {
   height: calc(100% - 50px);
   overflow: auto;
@@ -437,8 +442,8 @@ button:disabled { cursor: not-allowed; opacity: 0.34; box-shadow: none !importan
 .preview-slot {
   display: grid;
   place-items: center;
-  height: calc(100% - 50px);
-  min-height: 260px;
+  flex: 1 1 auto;
+  min-height: 200px;
   padding: 16px;
   background:
     radial-gradient(120% 100% at 50% 0%, rgba(123, 63, 216, 0.12), transparent 60%),
@@ -741,3 +746,182 @@ button:disabled { cursor: not-allowed; opacity: 0.34; box-shadow: none !importan
 }
 
 .is-hidden { display: none !important; }
+
+/* ── AI verification flip card ─────────────────────────────── */
+.grade-card.grade-flip {
+  flex: 0 0 auto;
+  margin: 0 16px 16px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.grade-flip-head {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin-bottom: 10px;
+}
+
+.grade-flip-card {
+  width: 100%;
+  border: none;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  perspective: 1100px;
+  text-align: left;
+}
+
+.grade-flip-inner {
+  position: relative;
+  width: 100%;
+  min-height: 188px;
+  transform-style: preserve-3d;
+  transition: transform .72s cubic-bezier(.4, 0, .2, 1);
+}
+
+.grade-flip-inner.is-flipped { transform: rotateY(180deg); }
+
+.grade-flip-side {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  border-radius: 18px;
+  background: #1a1a2e;
+  border: 1px solid var(--line-strong);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--primary), transparent 86%), 0 0 34px color-mix(in oklab, var(--glow), transparent 62%);
+  padding: 22px 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.grade-flip-back {
+  transform: rotateY(180deg);
+  justify-content: flex-start;
+  min-height: 248px;
+}
+
+.grade-flip-score {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.grade-flip-score strong {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 72px;
+  line-height: 0.82;
+  color: var(--primary);
+  text-shadow: 0 0 28px var(--glow);
+}
+
+.grade-flip-score span {
+  font-family: var(--mono);
+  font-size: 15px;
+  color: var(--ink-faint);
+}
+
+.grade-flip-verdict {
+  font-family: var(--body);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 22px;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  margin-top: 10px;
+}
+
+.grade-flip-tier {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+  margin-top: 8px;
+  text-transform: lowercase;
+}
+
+.grade-flip-hint {
+  margin-top: auto;
+  padding-top: 14px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  opacity: 0.7;
+}
+
+.grade-bars { display: grid; gap: 10px; width: 100%; }
+
+.grade-bar {
+  display: grid;
+  grid-template-columns: 120px 1fr 38px;
+  align-items: center;
+  gap: 12px;
+}
+
+.grade-bar span {
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.grade-track {
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--surface-alt);
+  overflow: hidden;
+}
+
+.grade-fill {
+  height: 100%;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, var(--secondary), var(--primary));
+  box-shadow: 0 0 12px var(--glow);
+}
+
+.grade-bar em {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  font-style: normal;
+  color: var(--ink);
+  text-align: right;
+}
+
+.grade-flip-note {
+  margin: 14px 0 0;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.55;
+  color: var(--ink-soft);
+}
+
+.grade-flip-gaps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.grade-gap {
+  font-family: var(--body);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+
+.grade-card.is-strong .grade-flip-side { border-color: color-mix(in oklab, var(--primary), transparent 45%); }
+.grade-card.is-ships .grade-flip-side { border-color: color-mix(in oklab, var(--highlight), transparent 40%); }
+.grade-card.is-passable .grade-flip-side { border-color: color-mix(in oklab, var(--secondary), transparent 40%); }
+.grade-card.is-weak .grade-flip-side { border-color: color-mix(in oklab, var(--danger), transparent 45%); }

@@ -36,6 +36,7 @@ function WelcomeScreen({ onBegin, onSignIn }) {
       <div style={{ flex: 1 }} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 13, alignItems: 'center', margin: "40px 0px 0px" }}>
         <Btn onClick={onBegin} arrow>Mint your legend</Btn>
+        <a className="ly-link" href="https://github.com/anton-abyzov/my-legend-cursor-hackathon/releases/latest" target="_blank" rel="noopener noreferrer">Download desktop app</a>
         <button className="ly-link" onClick={onSignIn}>I already walk a path</button>
       </div>
     </Screen>);
@@ -263,6 +264,19 @@ function proofItems(proof) {
   return [];
 }
 
+function proofForDisplay(proof, outputUrl) {
+  const items = proofItems(proof);
+  if (items.length) return items;
+  if (outputUrl) return [{ src: outputUrl, kind: 'video' }];
+  return [];
+}
+
+function lySharePageUrl(jobId) {
+  const bp = LY_BASE || '';
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  return `${origin}${bp}/s/${jobId}`;
+}
+
 function ProofMedia({ item, alt }) {
   if (!item) return null;
   if (item.kind === 'video') {
@@ -324,17 +338,18 @@ function ProofScreen({ quest, onSubmit, onBack }) {
 }
 
 // ───────────────────────── Completion ─────────────────────────
-function CompleteScreen({ quest, tagline, proof, onShare, onJournal }) {
+function CompleteScreen({ quest, tagline, proof, outputUrl, onShare, onJournal }) {
   const today = new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+  const media = proofForDisplay(proof, outputUrl);
   return (
     <Screen blobs intense top={70} bottom={44} center contentStyle={{ justifyContent: 'center', alignItems: 'center', textAlign: 'center' }}>
       {[...Array(8)].map((_, k) => <span key={k} className="ly-mote" style={{ left: `${8 + k * 11}%`, animationDelay: `${k * 0.45}s` }} />)}
       <div className="ly-reveal-in" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
         <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div className="ly-glow" />
-          {proofItems(proof).length ? (
+          {media.length ? (
             <div className="ly-polaroid">
-              <ProofMedia item={proofItems(proof)[0]} />
+              <ProofMedia item={media[0]} />
               <span className="ly-polaroid-badge"><Sigil style={{ fontSize: 20, color: 'var(--primary)' }}>{quest.sigil}</Sigil></span>
             </div>
           ) : (
@@ -354,13 +369,33 @@ function CompleteScreen({ quest, tagline, proof, onShare, onJournal }) {
 }
 
 // ───────────────────────── Share (collectible card) ─────────────────────────
-function ShareScreen({ quest, tagline, completed, proof, onBack, toast }) {
+function ShareScreen({ quest, tagline, completed, proof, outputUrl, jobId, publicView, onBack, toast }) {
   const today = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   const edition = String(completed || 0).padStart(3, '0');
+  const media = proofForDisplay(proof, outputUrl);
   const actions = ['Share to Stories', 'Copy link', 'Save image'];
+
+  const onAction = async (label, i) => {
+    if (i === 1 && jobId) {
+      const url = lySharePageUrl(jobId);
+      try {
+        await navigator.clipboard.writeText(url);
+        toast('Link copied');
+      } catch (_) {
+        toast('Could not copy link');
+      }
+      return;
+    }
+    if (i === 1) {
+      toast('No share link yet');
+      return;
+    }
+    toast(i === 2 ? 'Saved to gallery' : 'Shared to story');
+  };
+
   return (
     <Screen top={60} bottom={38} contentStyle={{ justifyContent: 'flex-start' }}>
-      <TopBar onBack={onBack} label="Share" />
+      <TopBar onBack={publicView ? null : onBack} label="Share" />
       <div className="ly-share-card">
         <Starfield />
         <div className="ly-share-holo" />
@@ -370,12 +405,12 @@ function ShareScreen({ quest, tagline, completed, proof, onBack, toast }) {
             <span className="ly-num">Nº {edition}</span>
           </div>
           <div className="ly-share-media">
-            {proofItems(proof).length ? <ProofMedia item={proofItems(proof)[0]} /> : <Sigil style={{ fontSize: 64, color: 'var(--primary)', textShadow: '0 0 26px var(--glow)' }}>{quest.sigil}</Sigil>}
+            {media.length ? <ProofMedia item={media[0]} /> : <Sigil style={{ fontSize: 64, color: 'var(--primary)', textShadow: '0 0 26px var(--glow)' }}>{quest.sigil}</Sigil>}
             <span className="ly-share-media-tag">A quest, lived</span>
           </div>
           <div style={{ textAlign: 'center', padding: '2px 0 4px' }}>
             <div className="ly-h1" style={{ fontSize: 26, lineHeight: 1.02 }}>{quest.title}</div>
-            {!proofItems(proof).length && <p className="ly-essence" style={{ fontSize: 14.5, maxWidth: 250, margin: '12px auto 0' }}>{quest.essence}</p>}
+            {!media.length && <p className="ly-essence" style={{ fontSize: 14.5, maxWidth: 250, margin: '12px auto 0' }}>{quest.essence}</p>}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span className="ly-num">{tagline ? tagline.slice(0, 22) : 'A TRAVELER'}</span>
@@ -385,9 +420,12 @@ function ShareScreen({ quest, tagline, completed, proof, onBack, toast }) {
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 18 }}>
         {actions.map((a, i) =>
-        <Btn key={a} variant={i === 0 ? 'cta' : 'ghost'} onClick={() => toast(i === 1 ? 'Link copied' : i === 2 ? 'Saved to gallery' : 'Shared to story')}>{a}</Btn>
+        <Btn key={a} variant={i === 0 ? 'cta' : 'ghost'} onClick={() => onAction(a, i)}>{a}</Btn>
         )}
       </div>
+      {publicView && (
+        <button className="ly-link" onClick={() => { window.location.href = (LY_BASE || '') + '/'; }} style={{ margin: '14px auto 0', display: 'block' }}>Start your own legend</button>
+      )}
     </Screen>);
 
 }
@@ -474,6 +512,7 @@ function lyQuestBody(quest, answers) {
   const fd = new FormData();
   fd.append('title', quest.title);
   fd.append('sideQuest', quest.title);
+  fd.append('questSlug', quest.id);
   fd.append('persona', lyPersona(answers));
   fd.append('style', 'cinematic proof');
   fd.append('aspect', 'vertical');
@@ -491,6 +530,7 @@ function UploadScreen({ quest, answers, onCooking, onBack }) {
   const [previewUrl, setPreviewUrl] = React.useState(null);
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState(null);
+  const [progress, setProgress] = React.useState(0);
   const inputRef = React.useRef(null);
 
   React.useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
@@ -506,20 +546,30 @@ function UploadScreen({ quest, answers, onCooking, onBack }) {
 
   const totalSize = files.reduce((s, f) => s + f.size, 0);
 
-  const begin = async () => {
+  const begin = () => {
     if (!files.length || busy) return;
-    setBusy(true); setErr(null);
-    try {
-      const fd = lyQuestBody(quest, answers);
-      for (const f of files) fd.append('videos', f);
-      const res = await fetch(lyApiPath('/api/quests'), { method: 'POST', credentials: 'same-origin', body: fd });
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body.message || body.error || 'Upload failed');
-      onCooking(body.job.id);
-    } catch (e) {
-      setErr(e.message || 'Upload failed');
-      setBusy(false);
-    }
+    setBusy(true); setErr(null); setProgress(0);
+    const fd = lyQuestBody(quest, answers);
+    for (const f of files) fd.append('videos', f);
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', lyApiPath('/api/quests'));
+    xhr.withCredentials = true;
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) setProgress(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () => {
+      let body = {};
+      try { body = JSON.parse(xhr.responseText); } catch (_) {}
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onCooking(body.job.id);
+      } else {
+        setErr(body.message || body.error || 'Upload failed');
+        setBusy(false);
+      }
+    };
+    xhr.onerror = () => { setErr('Upload failed'); setBusy(false); };
+    xhr.ontimeout = () => { setErr('Upload failed'); setBusy(false); };
+    xhr.send(fd);
   };
 
   return (
@@ -564,8 +614,23 @@ function UploadScreen({ quest, answers, onCooking, onBack }) {
 
       {err && <p className="ly-note" style={{ color: 'var(--primary)', marginTop: 14 }}>{err}</p>}
 
+      {busy && (
+        <div style={{ marginTop: 18 }}>
+          <div className="ly-bar">
+            <div className="ly-bar-fill" style={{ width: progress + '%' }}>
+              <div className="ly-bar-shine" />
+            </div>
+          </div>
+          <div className="ly-eyebrow" style={{ marginTop: 8 }}>
+            {progress >= 100
+              ? 'Lighting the forge…'
+              : <span>Uploading <span className="ly-num">{progress}%</span> · <span className="ly-num">{lyBytes(progress / 100 * totalSize)}</span> / <span className="ly-num">{lyBytes(totalSize)}</span></span>}
+          </div>
+        </div>
+      )}
+
       <div style={{ flex: 1, minHeight: 18 }} />
-      <Btn onClick={begin} disabled={!files.length || busy} arrow style={{ marginTop: 18 }}>{busy ? 'Lighting the forge…' : 'Cook my proof'}</Btn>
+      <Btn onClick={begin} disabled={!files.length || busy} arrow style={{ marginTop: 18 }}>{busy ? (progress >= 100 ? 'Lighting the forge…' : `Uploading ${progress}%…`) : 'Cook my proof'}</Btn>
     </Screen>);
 
 }
@@ -642,8 +707,6 @@ function CookingScreen({ jobId, quest, onVerify, onRetry, onBack }) {
     };
   }, [jobId]);
 
-  const logs = (job && job.logTail) || ['Summoning the render daemon…'];
-  const tail = logs.slice(-7);
   const stageState = (key) => {
     const st = job && job.progress && job.progress.stages && job.progress.stages[key];
     if (st && st.status) return st.status;
@@ -702,10 +765,6 @@ function CookingScreen({ jobId, quest, onVerify, onRetry, onBack }) {
         })}
       </div>
 
-      <div className="ly-eyebrow" style={{ marginTop: 20 }}>Ritual log</div>
-      <div className="ly-log" style={{ marginTop: 8 }}>
-        {tail.map((line, i) => <div className="ly-log-line" key={i}>{line}</div>)}
-      </div>
       <div style={{ flex: 1, minHeight: 12 }} />
     </Screen>);
 
@@ -714,10 +773,55 @@ function CookingScreen({ jobId, quest, onVerify, onRetry, onBack }) {
 // ───────────────────────── Verify (AI grade gate) ─────────────────────────
 const LY_BREAKDOWN = { promptMatch: 'Prompt match', visualQuality: 'Visual quality', pacing: 'Pacing', audienceFit: 'Audience fit' };
 
+function AiVerificationFlipCard({ grade }) {
+  const [flipped, setFlipped] = React.useState(false);
+  const score = Number(grade.score || 0);
+  const verdict = String(grade.verdict || 'Judged').toUpperCase();
+
+  return (
+    <div className="ly-verify-flip" style={{ marginTop: 10 }}>
+      <div className="ly-verify-flip-head">AI verification</div>
+      <button
+        type="button"
+        className="ly-verify-flip-card"
+        onClick={() => setFlipped((v) => !v)}
+        aria-pressed={flipped}
+        aria-label={flipped ? 'Show AI verification score' : 'Show AI verification details'}>
+        <div className={`ly-verify-flip-inner${flipped ? ' is-flipped' : ''}`}>
+          <div className="ly-verify-flip-side ly-verify-flip-front">
+            <div className="ly-verify-flip-score">{score.toFixed(1)}<sub>/10</sub></div>
+            <div className="ly-verify-flip-verdict">{verdict}</div>
+            <div className="ly-verify-flip-hint">tap for breakdown</div>
+          </div>
+          <div className="ly-verify-flip-side ly-verify-flip-back">
+            <div className="ly-verify-flip-bars">
+              {Object.entries(grade.breakdown || {}).map(([k, v]) => {
+                const val = Number(v) || 0;
+                return (
+                  <div className="ly-gradebar" key={k}>
+                    <span className="ly-gradebar-label">{LY_BREAKDOWN[k] || k}</span>
+                    <span className="ly-gradebar-track"><span className="ly-gradebar-fill" style={{ width: `${Math.max(0, Math.min(100, val * 10))}%` }} /></span>
+                    <span className="ly-gradebar-val">{val.toFixed(1)}</span>
+                  </div>);
+              })}
+            </div>
+            {grade.rationale && <p className="ly-verify-flip-note">{grade.rationale}</p>}
+            {(grade.gaps || []).length > 0 && (
+              <div className="ly-verify-flip-gaps">
+                {grade.gaps.map((g, i) => <div className="ly-gap" key={i}>{g}</div>)}
+              </div>
+            )}
+            <div className="ly-verify-flip-hint">tap for score</div>
+          </div>
+        </div>
+      </button>
+    </div>);
+
+}
+
 function VerifyScreen({ job, quest, onSeal, onRetry }) {
   const result = (job && job.result) || {};
   const grade = job && job.grade;
-  const score = grade ? Number(grade.score || 0) : null;
   // outputUrl from the server is already base-path / mount aware — use as-is.
   const videoSrc = result.outputUrl || null;
 
@@ -743,40 +847,15 @@ function VerifyScreen({ job, quest, onSeal, onRetry }) {
         </div>
       )}
 
-      <div className="ly-eyebrow" style={{ marginTop: 22 }}>AI verification</div>
       {grade ? (
-        <div className="ly-grade" style={{ marginTop: 10 }}>
-          <div className="ly-grade-head">
-            <div className="ly-grade-score">{score.toFixed(1)}<sub>/10</sub></div>
-            <div>
-              <div className="ly-grade-verdict">{grade.verdict || 'Judged'}</div>
-              <div className="ly-num" style={{ marginTop: 6 }}>{grade.provider || 'grader'}{grade.model ? ` · ${grade.model}` : ''}</div>
-            </div>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 11, marginTop: 18 }}>
-            {Object.entries(grade.breakdown || {}).map(([k, v]) => {
-              const val = Number(v) || 0;
-              return (
-                <div className="ly-gradebar" key={k}>
-                  <span className="ly-gradebar-label">{LY_BREAKDOWN[k] || k}</span>
-                  <span className="ly-gradebar-track"><span className="ly-gradebar-fill" style={{ width: `${Math.max(0, Math.min(100, val * 10))}%` }} /></span>
-                  <span className="ly-gradebar-val">{val.toFixed(1)}</span>
-                </div>);
-
-            })}
-          </div>
-          {grade.rationale && <p className="ly-note" style={{ marginTop: 16 }}>{grade.rationale}</p>}
-          {(grade.gaps || []).length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
-              <div className="ly-eyebrow" style={{ margin: 0 }}>What the omen still wants</div>
-              {grade.gaps.map((g, i) => <div className="ly-gap" key={i}>{g}</div>)}
-            </div>
-          )}
-        </div>
+        <AiVerificationFlipCard grade={grade} />
       ) : (
-        <div className="ly-grade" style={{ marginTop: 10 }}>
-          <div className="ly-grade-verdict">Proof accepted</div>
-          <p className="ly-note" style={{ marginTop: 8 }}>The grader sat this one out, but your render survived the forge. Seal it and move on.</p>
+        <div className="ly-verify-flip" style={{ marginTop: 22 }}>
+          <div className="ly-verify-flip-head">AI verification</div>
+          <div className="ly-grade" style={{ marginTop: 10 }}>
+            <div className="ly-grade-verdict">Proof accepted</div>
+            <p className="ly-note" style={{ marginTop: 8 }}>The grader sat this one out, but your render survived the forge. Seal it and move on.</p>
+          </div>
         </div>
       )}
 
@@ -787,4 +866,4 @@ function VerifyScreen({ job, quest, onSeal, onRetry }) {
 
 }
 
-Object.assign(window, { WelcomeScreen, SignInScreen, QuizScreen, SeekScreen, RevealScreen, QuestScreen, ProofScreen, CompleteScreen, ShareScreen, JournalScreen, TopBar, UploadScreen, CookingScreen, VerifyScreen });
+Object.assign(window, { WelcomeScreen, SignInScreen, QuizScreen, SeekScreen, RevealScreen, QuestScreen, ProofScreen, CompleteScreen, ShareScreen, JournalScreen, TopBar, UploadScreen, CookingScreen, VerifyScreen, lyApiPath, lySharePageUrl, proofForDisplay });

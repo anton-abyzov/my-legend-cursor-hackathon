@@ -167,11 +167,6 @@ function buildIndexHtml(plan, timelineResult, payload) {
     })
     .join("\n");
 
-  const sourceRail = timeline
-    .slice(0, 6)
-    .map((shot, index) => `<span>${String(index + 1).padStart(2, "0")} ${escapeHtml(shot.sourceName)}</span>`)
-    .join("");
-
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -413,7 +408,6 @@ function buildIndexHtml(plan, timelineResult, payload) {
           <div class="timecode">${roundTime(totalDuration)}S</div>
         </div>
         <div class="bottombar">
-          <div class="source-rail">${sourceRail}</div>
           <div class="progress"><div class="progress-fill"></div></div>
         </div>
       </div>

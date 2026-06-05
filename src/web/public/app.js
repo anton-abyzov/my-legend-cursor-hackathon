@@ -253,6 +253,8 @@ function renderGrade(grade) {
   }
 
   const score = Number(grade.score || 0);
+  const verdict = String(grade.verdict || "Judged").toUpperCase();
+  const tier = [grade.provider, grade.model].filter(Boolean).join(" · ") || "heuristic · deterministic";
   const bars = Object.entries(grade.breakdown || {})
     .map(([key, value]) => {
       const pct = Math.max(0, Math.min(100, Number(value) * 10));
@@ -266,21 +268,37 @@ function renderGrade(grade) {
     .join("");
 
   const gaps = (grade.gaps || []).length
-    ? `<div class="grade-notes"><strong>Gaps</strong><ul>${grade.gaps.map((g) => `<li>${escapeHtml(g)}</li>`).join("")}</ul></div>`
+    ? `<div class="grade-flip-gaps">${grade.gaps.map((g) => `<div class="grade-gap">${escapeHtml(g)}</div>`).join("")}</div>`
     : "";
 
-  els.gradeCard.className = `grade-card ${gradeTone(score)}`;
+  els.gradeCard.className = `grade-card grade-flip ${gradeTone(score)}`;
   els.gradeCard.innerHTML = `
-    <div class="grade-head">
-      <div class="grade-score"><strong>${score.toFixed(1)}</strong><span>/10</span></div>
-      <div class="grade-verdict">
-        <strong>${escapeHtml(grade.verdict || "")}</strong>
-        <span>Match score · ${escapeHtml(grade.provider || "")}${grade.model ? ` · ${escapeHtml(grade.model)}` : ""}</span>
+    <div class="grade-flip-head">AI verification</div>
+    <button type="button" class="grade-flip-card" aria-label="Toggle AI verification details">
+      <div class="grade-flip-inner">
+        <div class="grade-flip-side grade-flip-front">
+          <div class="grade-flip-score"><strong>${score.toFixed(1)}</strong><span>/10</span></div>
+          <div class="grade-flip-verdict">${escapeHtml(verdict)}</div>
+          <div class="grade-flip-tier">${escapeHtml(tier)}</div>
+          <div class="grade-flip-hint">tap for breakdown</div>
+        </div>
+        <div class="grade-flip-side grade-flip-back">
+          <div class="grade-bars">${bars}</div>
+          ${grade.rationale ? `<p class="grade-flip-note">${escapeHtml(grade.rationale)}</p>` : ""}
+          ${gaps}
+          <div class="grade-flip-hint">tap for score</div>
+        </div>
       </div>
-    </div>
-    <div class="grade-bars">${bars}</div>
-    ${grade.rationale ? `<p class="grade-rationale">${escapeHtml(grade.rationale)}</p>` : ""}
-    ${gaps}`;
+    </button>`;
+
+  const toggle = els.gradeCard.querySelector(".grade-flip-card");
+  const inner = els.gradeCard.querySelector(".grade-flip-inner");
+  if (toggle && inner) {
+    toggle.addEventListener("click", () => {
+      const flipped = inner.classList.toggle("is-flipped");
+      toggle.setAttribute("aria-pressed", flipped ? "true" : "false");
+    });
+  }
 }
 
 function renderVerification(job) {
