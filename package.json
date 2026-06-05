@@ -1,0 +1,28 @@
+{
+  "name": "legend-hyperframes-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "macOS desktop MVP for prompt-directed HyperFrames video assembly.",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "web": "node src/web/server.js",
+    "doctor": "npx --yes hyperframes@0.6.70 doctor",
+    "hf:doctor": "npx --yes hyperframes@0.6.70 doctor"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "electron": "^42.3.3"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1062.0",
+    "@aws-sdk/lib-storage": "^3.1062.0",
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@ffprobe-installer/ffprobe": "^2.1.2",
+    "express": "^5.2.1",
+    "hyperframes": "^0.6.70",
+    "multer": "^2.1.1"
+  }
+}

@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Legend HyperFrames</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark"></span>
+          <div>
+            <h1>Legend HyperFrames</h1>
+            <p>Prompt-cut video engine</p>
+          </div>
+        </div>
+
+        <button id="selectVideos" class="primary-button" type="button">
+          <span class="button-icon">+</span>
+          Choose videos
+        </button>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Source clips</h2>
+            <span id="videoCount">0</span>
+          </div>
+          <div id="videoList" class="video-list empty">No videos selected</div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Render settings</h2>
+          </div>
+          <label class="field">
+            <span>Audience chrome</span>
+            <input id="audience" value="Gen Z side quest" />
+          </label>
+          <label class="field">
+            <span>Target seconds</span>
+            <input id="targetDuration" type="number" min="6" max="120" value="30" />
+          </label>
+          <label class="field">
+            <span>Aspect</span>
+            <select id="aspect">
+              <option value="vertical">Vertical 9:16</option>
+              <option value="landscape">Landscape 16:9</option>
+              <option value="square">Square 1:1</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Quality</span>
+            <select id="quality">
+              <option value="draft">Draft</option>
+              <option value="standard">Standard</option>
+              <option value="high">High</option>
+            </select>
+          </label>
+        </section>
+      </aside>
+
+      <section class="workspace">
+        <header class="workspace-head">
+          <div>
+            <h2>Core engine</h2>
+            <p>Select footage, describe the edit, generate a real HyperFrames project, render MP4.</p>
+          </div>
+          <div class="actions">
+            <button id="generateProject" type="button" class="secondary-button">Generate project</button>
+            <button id="renderProject" type="button" class="primary-button" disabled>Render draft</button>
+          </div>
+        </header>
+
+        <label class="prompt-wrap">
+          <span>Detailed edit prompt</span>
+          <textarea id="prompt">Create a no-silence Gen Z side quest reel from these clips. Cut to the strongest audible moments, add kinetic captions, keep the pacing fast, and make the edit feel like a Cursor Hackathon demo that proves the engine works.</textarea>
+        </label>
+
+        <section class="result-grid">
+          <article class="panel plan-panel">
+            <div class="panel-head">
+              <h2>Generated cut</h2>
+              <button id="revealProject" class="ghost-button" type="button" disabled>Reveal</button>
+            </div>
+            <div id="cutPlan" class="cut-plan empty">No project generated yet</div>
+          </article>
+
+          <article class="panel preview-panel">
+            <div class="panel-head">
+              <h2>Rendered output</h2>
+              <button id="revealRender" class="ghost-button" type="button" disabled>Reveal</button>
+            </div>
+            <div id="previewSlot" class="preview-slot">
+              <div class="preview-empty">Render output appears here</div>
+            </div>
+          </article>
+        </section>
+
+        <section class="panel log-panel">
+          <div class="panel-head">
+            <h2>Engine log</h2>
+            <button id="clearLog" class="ghost-button" type="button">Clear</button>
+          </div>
+          <pre id="logOutput"></pre>
+        </section>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

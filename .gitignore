@@ -1,0 +1,12 @@
+node_modules/
+dist/
+build/
+runs/
+sources/
+web-data*/
+.wrangler/
+.env
+.env.*
+.hf-shape/
+.DS_Store
+npm-debug.log*

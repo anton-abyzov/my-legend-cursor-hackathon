@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Legend Side Quests</title>
+    <link rel="stylesheet" href="%BASE_PATH%/assets/styles.css" />
+  </head>
+  <body>
+    <script>
+      window.LEGEND_CONFIG = {
+        basePath: "%BASE_PATH%",
+        authRequired: %AUTH_REQUIRED%
+      };
+    </script>
+
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand-row">
+          <span class="brand-mark"></span>
+          <div>
+            <strong>Legend</strong>
+            <small>Side Quests</small>
+          </div>
+        </div>
+
+        <div class="collection-tabs" aria-label="Collection filter">
+          <button class="tab is-active" data-filter="all">All</button>
+          <button class="tab" data-filter="Hackathon proof">Hackathon</button>
+          <button class="tab" data-filter="Product demo">Product</button>
+          <button class="tab" data-filter="Founder diary">Founder</button>
+        </div>
+
+        <div class="history-head">
+          <span>History</span>
+          <button id="refreshHistory" class="icon-button" title="Refresh" type="button">R</button>
+        </div>
+        <div id="historyList" class="history-list"></div>
+      </aside>
+
+      <main class="workspace">
+        <section class="workflow-panel">
+          <div class="panel-head">
+            <div>
+              <h1>Quest Builder</h1>
+              <p id="sessionState">Checking session</p>
+            </div>
+            <button id="logoutButton" class="ghost-button" type="button">Logout</button>
+          </div>
+
+          <form id="questForm" class="quest-grid">
+            <label class="field wide">
+              <span>Quest name</span>
+              <input name="title" type="text" value="Cursor Hackathon proof" maxlength="96" />
+            </label>
+
+            <label class="field">
+              <span>Persona</span>
+              <select name="persona">
+                <option>Gen Z</option>
+                <option>Builder Twitter</option>
+                <option>Founder demo</option>
+                <option>Enterprise buyer</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Side quest</span>
+              <select name="sideQuest">
+                <option>Hackathon proof</option>
+                <option>Product demo</option>
+                <option>Founder diary</option>
+                <option>Chaos montage</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Cut style</span>
+              <select name="style">
+                <option>fast viral proof</option>
+                <option>clean launch recap</option>
+                <option>technical build log</option>
+                <option>raw behind the scenes</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Format</span>
+              <select name="aspect">
+                <option value="vertical">Vertical 9:16</option>
+                <option value="landscape">Landscape 16:9</option>
+                <option value="square">Square 1:1</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>Duration</span>
+              <input name="targetDuration" type="number" min="6" max="60" value="18" />
+            </label>
+
+            <label class="field upload-field">
+              <span>Videos (MP4, MOV, M4V)</span>
+              <input id="videoInput" name="videos" type="file" accept="video/mp4,video/quicktime,video/x-m4v,.mp4,.mov,.m4v,video/*" multiple />
+            </label>
+
+            <label class="field wide prompt-field">
+              <span>Generated prompt</span>
+              <textarea name="prompt" rows="8"></textarea>
+            </label>
+
+            <div class="action-row wide">
+              <button id="submitButton" class="primary-button" type="submit">Render Quest</button>
+              <span id="uploadMeta">No files selected</span>
+            </div>
+          </form>
+        </section>
+
+        <section class="result-panel">
+          <div class="panel-head">
+            <div>
+              <h2>Verification</h2>
+              <p id="jobStatus">No active render</p>
+            </div>
+            <a id="outputLink" class="ghost-button is-hidden" href="#" target="_blank" rel="noreferrer">Open MP4</a>
+          </div>
+
+          <div id="verificationGrid" class="verification-grid"></div>
+          <video id="outputVideo" class="output-video is-hidden" controls playsinline></video>
+          <pre id="logTail" class="log-tail"></pre>
+        </section>
+      </main>
+    </div>
+
+    <div id="loginGate" class="login-gate is-hidden">
+      <form id="loginForm" class="login-box">
+        <span class="brand-mark"></span>
+        <h2>Legend</h2>
+        <label class="field">
+          <span>Password</span>
+          <input name="password" type="password" autocomplete="current-password" />
+        </label>
+        <button class="primary-button" type="submit">Enter</button>
+        <p id="loginError"></p>
+      </form>
+    </div>
+
+    <script src="%BASE_PATH%/assets/app.js"></script>
+  </body>
+</html>
