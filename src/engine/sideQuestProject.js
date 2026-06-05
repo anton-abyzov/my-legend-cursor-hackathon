@@ -93,7 +93,8 @@ ${plan.styleName}: ${plan.thesis}
 ## Quest Parameters
 
 - Persona: ${payload.audience || "Gen Z"}
-- Side quest: ${payload.sideQuest || "Hackathon proof"}
+- Side quest: ${payload.sideQuest || "Hackathon proof"}${payload.questCategory ? ` (${payload.questCategory})` : ""}
+- Difficulty: ${payload.questDifficulty || "medium"}${payload.questXp ? ` · ${payload.questXp} XP` : ""}
 - Format: ${payload.aspect || "vertical"}
 - Target duration: ${payload.targetDuration || 18}s
 

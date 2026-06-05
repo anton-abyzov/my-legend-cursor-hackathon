@@ -4,6 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Legend Side Quests</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="%BASE_PATH%/assets/styles.css" />
   </head>
   <body>
@@ -26,9 +32,10 @@
 
         <div class="collection-tabs" aria-label="Collection filter">
           <button class="tab is-active" data-filter="all">All</button>
-          <button class="tab" data-filter="Hackathon proof">Hackathon</button>
-          <button class="tab" data-filter="Product demo">Product</button>
-          <button class="tab" data-filter="Founder diary">Founder</button>
+          <button class="tab" data-filter="easy">Easy</button>
+          <button class="tab" data-filter="medium">Medium</button>
+          <button class="tab" data-filter="hard">Hard</button>
+          <button class="tab" data-filter="extreme">Extreme</button>
         </div>
 
         <div class="history-head">
@@ -64,15 +71,22 @@
               </select>
             </label>
 
-            <label class="field">
+            <div class="field wide quest-slot-field">
               <span>Side quest</span>
-              <select name="sideQuest">
-                <option>Hackathon proof</option>
-                <option>Product demo</option>
-                <option>Founder diary</option>
-                <option>Chaos montage</option>
-              </select>
-            </label>
+              <input type="hidden" name="sideQuest" id="sideQuestInput" value="" />
+              <input type="hidden" name="questSlug" id="questSlugInput" value="" />
+              <input type="hidden" name="questCategory" id="questCategoryInput" value="" />
+              <input type="hidden" name="questDifficulty" id="questDifficultyInput" value="" />
+              <input type="hidden" name="questXp" id="questXpInput" value="" />
+              <button type="button" id="questSlot" class="quest-slot is-empty">
+                <div class="quest-slot-main">
+                  <strong id="questSlotTitle">No quest selected</strong>
+                  <p id="questSlotDesc">Pick a side quest to start the legend.</p>
+                </div>
+                <div class="quest-slot-badges" id="questSlotBadges"></div>
+                <span class="quest-slot-cta">Choose</span>
+              </button>
+            </div>
 
             <label class="field">
               <span>Cut style</span>
@@ -124,11 +138,54 @@
             <a id="outputLink" class="ghost-button is-hidden" href="#" target="_blank" rel="noreferrer">Open MP4</a>
           </div>
 
+          <div id="gradeCard" class="grade-card is-hidden"></div>
           <div id="verificationGrid" class="verification-grid"></div>
           <video id="outputVideo" class="output-video is-hidden" controls playsinline></video>
           <pre id="logTail" class="log-tail"></pre>
         </section>
       </main>
+    </div>
+
+    <div id="questPicker" class="quest-picker is-hidden">
+      <div class="quest-picker-box">
+        <header class="quest-picker-head">
+          <div>
+            <h2>Choose your side quest</h2>
+            <p id="questPickerMeta">Loading quests</p>
+          </div>
+          <button type="button" id="questPickerClose" class="ghost-button">Close</button>
+        </header>
+
+        <div class="quest-filters">
+          <div class="quest-modes" id="questModes" role="tablist">
+            <button type="button" class="seg is-active" data-mode="recommended">For you</button>
+            <button type="button" class="seg" data-mode="browse">Browse all</button>
+            <button type="button" class="seg" data-mode="daily">Daily</button>
+          </div>
+          <input type="search" id="questSearch" class="quest-search" placeholder="Search quests..." />
+          <div class="chip-row" id="difficultyChips" data-facet="difficulty">
+            <button type="button" class="chip is-active" data-value="all">All</button>
+            <button type="button" class="chip" data-value="easy">Easy</button>
+            <button type="button" class="chip" data-value="medium">Medium</button>
+            <button type="button" class="chip" data-value="hard">Hard</button>
+            <button type="button" class="chip" data-value="extreme">Extreme</button>
+          </div>
+          <div class="chip-row" id="costChips" data-facet="cost">
+            <button type="button" class="chip is-active" data-value="all">Any cost</button>
+            <button type="button" class="chip" data-value="free">Free</button>
+            <button type="button" class="chip" data-value="cheap">Cheap</button>
+            <button type="button" class="chip" data-value="paid">Paid</button>
+          </div>
+          <div class="quest-filter-row">
+            <select id="categorySelect" class="quest-category">
+              <option value="all">All categories</option>
+            </select>
+            <button type="button" id="rollRandom" class="primary-button">Roll random</button>
+          </div>
+        </div>
+
+        <div id="questResults" class="quest-results"></div>
+      </div>
     </div>
 
     <div id="loginGate" class="login-gate is-hidden">

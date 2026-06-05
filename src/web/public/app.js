@@ -6,7 +6,11 @@ const state = {
   jobs: [],
   filter: "all",
   activeJobId: null,
-  pollTimer: null
+  pollTimer: null,
+  selectedQuest: null,
+  questFilters: { difficulty: "all", cost: "all", category: "all", search: "" },
+  questSource: null,
+  searchTimer: null
 };
 
 const els = {
@@ -19,13 +23,32 @@ const els = {
   historyList: document.querySelector("#historyList"),
   refreshHistory: document.querySelector("#refreshHistory"),
   jobStatus: document.querySelector("#jobStatus"),
+  gradeCard: document.querySelector("#gradeCard"),
   verificationGrid: document.querySelector("#verificationGrid"),
   outputVideo: document.querySelector("#outputVideo"),
   outputLink: document.querySelector("#outputLink"),
   logTail: document.querySelector("#logTail"),
   loginGate: document.querySelector("#loginGate"),
   loginForm: document.querySelector("#loginForm"),
-  loginError: document.querySelector("#loginError")
+  loginError: document.querySelector("#loginError"),
+  questSlot: document.querySelector("#questSlot"),
+  questSlotTitle: document.querySelector("#questSlotTitle"),
+  questSlotDesc: document.querySelector("#questSlotDesc"),
+  questSlotBadges: document.querySelector("#questSlotBadges"),
+  sideQuestInput: document.querySelector("#sideQuestInput"),
+  questSlugInput: document.querySelector("#questSlugInput"),
+  questCategoryInput: document.querySelector("#questCategoryInput"),
+  questDifficultyInput: document.querySelector("#questDifficultyInput"),
+  questXpInput: document.querySelector("#questXpInput"),
+  questPicker: document.querySelector("#questPicker"),
+  questPickerClose: document.querySelector("#questPickerClose"),
+  questPickerMeta: document.querySelector("#questPickerMeta"),
+  questSearch: document.querySelector("#questSearch"),
+  difficultyChips: document.querySelector("#difficultyChips"),
+  costChips: document.querySelector("#costChips"),
+  categorySelect: document.querySelector("#categorySelect"),
+  rollRandom: document.querySelector("#rollRandom"),
+  questResults: document.querySelector("#questResults")
 };
 
 function apiPath(path) {
@@ -60,17 +83,23 @@ function formValue(name) {
 function generatedPrompt() {
   const title = formValue("title") || "Side quest";
   const persona = formValue("persona") || "Gen Z";
-  const sideQuest = formValue("sideQuest") || "Hackathon proof";
+  const quest = state.selectedQuest;
+  const sideQuest = quest ? quest.title : formValue("sideQuest") || "Hackathon proof";
   const style = formValue("style") || "fast viral proof";
   const aspectLabel = els.questForm.elements.aspect.selectedOptions[0]?.textContent || "Vertical 9:16";
   const targetDuration = formValue("targetDuration") || "18";
 
+  const questLine = quest
+    ? `Side quest: "${quest.title}" (${quest.category}, ${quest.difficulty}, worth ${quest.total_xp} XP) — ${quest.description}`
+    : `Side quest: ${sideQuest}.`;
+
   return [
     `Build a ${targetDuration}s ${aspectLabel} HyperFrames edit called "${title}".`,
-    `Audience: ${persona}. Side quest: ${sideQuest}. Style: ${style}.`,
-    "Select the strongest audible moments, remove silence, avoid duplicate source clips, and keep the proof obvious.",
+    `Audience: ${persona}. Style: ${style}.`,
+    questLine,
+    "Prove the quester actually completed the challenge. Select the strongest audible moments, remove silence, and avoid duplicate source clips.",
     "Use kinetic labels, a visible progress rail, and short captions that explain why each beat matters.",
-    "End with a clear payoff frame that makes the demo feel shipped, not described."
+    `End on a payoff frame that stamps the ${quest ? quest.total_xp + " XP" : "XP"} win, not a description.`
   ].join("\n");
 }
 
@@ -108,9 +137,69 @@ function metric(label, value) {
   return `<div class="metric"><span>${label}</span><strong>${value || "-"}</strong></div>`;
 }
 
+function escapeHtml(value) {
+  return String(value == null ? "" : value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function gradeTone(score) {
+  if (score >= 8.5) return "is-ships";
+  if (score >= 7) return "is-strong";
+  if (score >= 5) return "is-passable";
+  return "is-weak";
+}
+
+const BREAKDOWN_LABELS = {
+  promptMatch: "Prompt match",
+  visualQuality: "Visual quality",
+  pacing: "Pacing",
+  audienceFit: "Audience fit"
+};
+
+function renderGrade(grade) {
+  if (!grade) {
+    els.gradeCard.classList.add("is-hidden");
+    els.gradeCard.innerHTML = "";
+    return;
+  }
+
+  const score = Number(grade.score || 0);
+  const bars = Object.entries(grade.breakdown || {})
+    .map(([key, value]) => {
+      const pct = Math.max(0, Math.min(100, Number(value) * 10));
+      return `
+        <div class="grade-bar">
+          <span>${BREAKDOWN_LABELS[key] || key}</span>
+          <div class="grade-track"><div class="grade-fill" style="width:${pct}%"></div></div>
+          <em>${Number(value).toFixed(1)}</em>
+        </div>`;
+    })
+    .join("");
+
+  const gaps = (grade.gaps || []).length
+    ? `<div class="grade-notes"><strong>Gaps</strong><ul>${grade.gaps.map((g) => `<li>${escapeHtml(g)}</li>`).join("")}</ul></div>`
+    : "";
+
+  els.gradeCard.className = `grade-card ${gradeTone(score)}`;
+  els.gradeCard.innerHTML = `
+    <div class="grade-head">
+      <div class="grade-score"><strong>${score.toFixed(1)}</strong><span>/10</span></div>
+      <div class="grade-verdict">
+        <strong>${escapeHtml(grade.verdict || "")}</strong>
+        <span>Match score · ${escapeHtml(grade.provider || "")}${grade.model ? ` · ${escapeHtml(grade.model)}` : ""}</span>
+      </div>
+    </div>
+    <div class="grade-bars">${bars}</div>
+    ${grade.rationale ? `<p class="grade-rationale">${escapeHtml(grade.rationale)}</p>` : ""}
+    ${gaps}`;
+}
+
 function renderVerification(job) {
   if (!job) {
     els.verificationGrid.innerHTML = "";
+    renderGrade(null);
     els.outputVideo.classList.add("is-hidden");
     els.outputLink.classList.add("is-hidden");
     els.logTail.textContent = "";
@@ -136,6 +225,7 @@ function renderVerification(job) {
     metric("Style", result.planStyle || job.style)
   ].join("");
   els.logTail.textContent = (job.logTail || []).join("\n");
+  renderGrade(job.grade);
 
   if (job.status === "complete" && result.outputUrl) {
     els.outputVideo.src = result.outputUrl;
@@ -149,7 +239,7 @@ function renderVerification(job) {
 }
 
 function renderHistory() {
-  const filtered = state.filter === "all" ? state.jobs : state.jobs.filter((job) => job.sideQuest === state.filter);
+  const filtered = state.filter === "all" ? state.jobs : state.jobs.filter((job) => job.questDifficulty === state.filter);
 
   if (!filtered.length) {
     els.historyList.innerHTML = `<div class="history-item"><strong>No quests yet</strong><span>Upload a batch to start.</span></div>`;
@@ -212,7 +302,242 @@ async function checkSession() {
   els.logoutButton.classList.toggle("is-hidden", !data.authRequired);
   els.sessionState.textContent = data.authenticated ? `${data.user.name} - ${data.user.authMode}` : "Locked";
 
-  if (data.authenticated) await loadJobs();
+  if (data.authenticated) {
+    await loadJobs();
+    if (!state.selectedQuest) openPicker();
+  }
+}
+
+/* ── quest picker + smart selection ──────────────────────────── */
+const DIFF_RANK = { easy: 1, medium: 2, hard: 3, extreme: 4 };
+const DIFF_LABEL = { easy: "Easy", medium: "Medium", hard: "Hard", extreme: "Extreme" };
+
+function playerLevel() {
+  return state.progress?.level || 1;
+}
+
+function unlockedRank() {
+  return Math.min(4, playerLevel());
+}
+
+function questBadges(quest, { compact = false } = {}) {
+  const badges = [
+    `<span class="badge dif-${quest.difficulty}">${DIFF_LABEL[quest.difficulty] || quest.difficulty}</span>`,
+    `<span class="badge xp">${quest.total_xp} XP</span>`
+  ];
+  if (!compact) {
+    badges.push(`<span class="badge">${escapeHtml(quest.category)}</span>`);
+    if (quest.cost && quest.cost !== "free") badges.push(`<span class="badge">${escapeHtml(quest.cost)}</span>`);
+    if (quest.social && quest.social !== "either") badges.push(`<span class="badge">${escapeHtml(quest.social)}</span>`);
+  }
+  return badges.join("");
+}
+
+function renderQuestSlot() {
+  const quest = state.selectedQuest;
+  if (!quest) {
+    els.questSlot.classList.add("is-empty");
+    els.questSlot.classList.remove("is-set");
+    els.questSlotTitle.textContent = "No quest selected";
+    els.questSlotDesc.textContent = "Pick a side quest to start the legend.";
+    els.questSlotBadges.innerHTML = "";
+    els.questSlot.querySelector(".quest-slot-cta").textContent = "Choose";
+    return;
+  }
+  els.questSlot.classList.remove("is-empty");
+  els.questSlot.classList.add("is-set");
+  els.questSlotTitle.textContent = quest.title;
+  els.questSlotDesc.textContent = quest.description;
+  els.questSlotBadges.innerHTML = questBadges(quest);
+  els.questSlot.querySelector(".quest-slot-cta").textContent = "Change";
+}
+
+function selectQuest(quest) {
+  state.selectedQuest = quest;
+  els.sideQuestInput.value = quest.title;
+  els.questSlugInput.value = quest.slug;
+  els.questCategoryInput.value = quest.category;
+  els.questDifficultyInput.value = quest.difficulty;
+  els.questXpInput.value = String(quest.total_xp);
+  renderQuestSlot();
+  syncPrompt();
+  closePicker();
+}
+
+function renderProgressHeader() {
+  const p = state.progress;
+  if (!p) {
+    els.questPickerMeta.textContent = `${state.questSource === "supabase" ? "Supabase" : "Local"} catalog`;
+    return;
+  }
+  els.questPickerMeta.textContent = `Level ${p.level} · ${p.earnedXp.toLocaleString()} XP · ${p.completedSlugs.length} completed`;
+}
+
+async function loadProgress() {
+  try {
+    const data = await api("/api/progress");
+    data.completedSlugs = data.completedSlugs || [];
+    data.bestGradeBySlug = data.bestGradeBySlug || {};
+    state.progress = data;
+  } catch {
+    state.progress = { earnedXp: 0, level: 1, completedSlugs: [], bestGradeBySlug: {} };
+  }
+  renderProgressHeader();
+}
+
+function questQueryString() {
+  const f = state.questFilters;
+  const params = new URLSearchParams();
+  if (f.difficulty && f.difficulty !== "all") params.set("difficulty", f.difficulty);
+  if (f.cost && f.cost !== "all") params.set("cost", f.cost);
+  if (f.category && f.category !== "all") params.set("category", f.category);
+  if (f.search) params.set("search", f.search);
+  return params.toString();
+}
+
+function questEndpoint() {
+  if (state.questMode === "browse") return "/api/side-quests";
+  if (state.questMode === "daily") return "/api/side-quests/daily";
+  return "/api/side-quests/recommended";
+}
+
+function renderQuestResults(quests) {
+  if (!quests.length) {
+    els.questResults.innerHTML = `<div class="quest-empty">No quests match these filters. Loosen them or roll random.</div>`;
+    return;
+  }
+  const completed = new Set(state.progress?.completedSlugs || []);
+  const bestGrades = state.progress?.bestGradeBySlug || {};
+  const unlocked = unlockedRank();
+
+  els.questResults.innerHTML = quests
+    .map((quest) => {
+      const isDone = completed.has(quest.slug);
+      const best = bestGrades[quest.slug];
+      const locked = DIFF_RANK[quest.difficulty] > unlocked;
+      const flags = [];
+      if (isDone) flags.push(`<span class="badge done">Done</span>`);
+      if (best != null) flags.push(`<span class="badge grade">${Number(best).toFixed(1)}/10</span>`);
+      if (locked) flags.push(`<span class="badge lock">Lvl ${DIFF_RANK[quest.difficulty]}</span>`);
+      return `
+        <button type="button" class="quest-card${isDone ? " is-done" : ""}" data-slug="${escapeHtml(quest.slug)}">
+          <h3>${escapeHtml(quest.title)}</h3>
+          <p>${escapeHtml(quest.description)}</p>
+          <div class="quest-card-badges">${questBadges(quest)}${flags.join("")}</div>
+        </button>`;
+    })
+    .join("");
+
+  els.questResults.dataset.cache = JSON.stringify(quests);
+}
+
+async function loadQuests() {
+  els.questResults.innerHTML = `<div class="quest-empty">Loading quests...</div>`;
+  const qs = questQueryString();
+  const sep = questEndpoint().includes("?") ? "&" : "?";
+  try {
+    const data = await api(`${questEndpoint()}${qs ? sep + qs : ""}`);
+    state.questSource = data.source || state.questSource;
+    if (data.facets && els.categorySelect.options.length <= 1) populateCategories(data.facets);
+    const quests = data.quests || (data.quest ? [data.quest] : []);
+    renderQuestResults(quests);
+  } catch (error) {
+    els.questResults.innerHTML = `<div class="quest-empty">${escapeHtml(error.message)}</div>`;
+  }
+}
+
+function populateCategories(facets) {
+  const cats = (facets.categories || []).map((c) => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)} (${c.count})</option>`).join("");
+  els.categorySelect.innerHTML = `<option value="all">All categories</option>${cats}`;
+}
+
+function findCachedQuest(slug) {
+  try {
+    const cache = JSON.parse(els.questResults.dataset.cache || "[]");
+    return cache.find((q) => q.slug === slug) || null;
+  } catch {
+    return null;
+  }
+}
+
+function openPicker() {
+  els.questPicker.classList.remove("is-hidden");
+  loadProgress();
+  loadQuests();
+}
+
+function closePicker() {
+  els.questPicker.classList.add("is-hidden");
+}
+
+function setMode(mode) {
+  state.questMode = mode;
+  document.querySelectorAll("#questModes .seg").forEach((b) => b.classList.toggle("is-active", b.dataset.mode === mode));
+  loadQuests();
+}
+
+function setupPicker() {
+  state.questMode = "recommended";
+
+  els.questSlot.addEventListener("click", openPicker);
+  els.questPickerClose.addEventListener("click", closePicker);
+  els.questPicker.addEventListener("click", (event) => {
+    if (event.target === els.questPicker) closePicker();
+  });
+
+  els.questResults.addEventListener("click", (event) => {
+    const card = event.target.closest("[data-slug]");
+    if (!card) return;
+    const quest = findCachedQuest(card.dataset.slug);
+    if (quest) selectQuest(quest);
+  });
+
+  els.difficultyChips.addEventListener("click", (event) => {
+    const chip = event.target.closest(".chip");
+    if (!chip) return;
+    state.questFilters.difficulty = chip.dataset.value;
+    els.difficultyChips.querySelectorAll(".chip").forEach((c) => c.classList.toggle("is-active", c === chip));
+    loadQuests();
+  });
+
+  els.costChips.addEventListener("click", (event) => {
+    const chip = event.target.closest(".chip");
+    if (!chip) return;
+    state.questFilters.cost = chip.dataset.value;
+    els.costChips.querySelectorAll(".chip").forEach((c) => c.classList.toggle("is-active", c === chip));
+    loadQuests();
+  });
+
+  els.categorySelect.addEventListener("change", () => {
+    state.questFilters.category = els.categorySelect.value;
+    loadQuests();
+  });
+
+  els.questSearch.addEventListener("input", () => {
+    window.clearTimeout(state.searchTimer);
+    state.searchTimer = window.setTimeout(() => {
+      state.questFilters.search = els.questSearch.value.trim();
+      loadQuests();
+    }, 220);
+  });
+
+  els.rollRandom.addEventListener("click", async () => {
+    const qs = questQueryString();
+    try {
+      const data = await api(`/api/side-quests/random${qs ? `?${qs}` : ""}`);
+      if (data.quest) selectQuest(data.quest);
+    } catch (error) {
+      els.questResults.innerHTML = `<div class="quest-empty">${escapeHtml(error.message)}</div>`;
+    }
+  });
+
+  const modeBar = document.querySelector("#questModes");
+  if (modeBar) {
+    modeBar.addEventListener("click", (event) => {
+      const seg = event.target.closest(".seg");
+      if (seg) setMode(seg.dataset.mode);
+    });
+  }
 }
 
 els.questForm.addEventListener("input", (event) => {
@@ -231,6 +556,11 @@ els.questForm.addEventListener("submit", async (event) => {
 
   if (!files.length) {
     els.uploadMeta.textContent = "Select at least one video";
+    return;
+  }
+
+  if (!state.selectedQuest) {
+    openPicker();
     return;
   }
 
@@ -306,6 +636,8 @@ els.loginForm.addEventListener("submit", async (event) => {
   }
 });
 
+setupPicker();
+renderQuestSlot();
 syncPrompt();
 updateUploadMeta();
 renderVerification(null);

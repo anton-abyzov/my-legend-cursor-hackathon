@@ -6,6 +6,7 @@ const express = require("express");
 const multer = require("multer");
 const { createSideQuestProject } = require("../engine/sideQuestProject");
 const { runProcess } = require("../engine/process");
+const { resolveTool } = require("../engine/ffmpegPaths");
 const { isSupportedVideoUpload, supportedFormatsLabel } = require("../engine/videoFormats");
 
 function loadDotEnv(filePath = path.join(process.cwd(), ".env")) {
@@ -28,7 +29,10 @@ function loadDotEnv(filePath = path.join(process.cwd(), ".env")) {
 
 loadDotEnv();
 
+const { gradeQuest, graderTier } = require("../engine/questGrader");
 const objectStorage = require("./lib/objectStorage");
+const analytics = require("./lib/analytics");
+const questStore = require("./lib/questStore");
 
 const PORT = Number(process.env.PORT || 4317);
 const BASE_PATH = normalizeBasePath(process.env.LEGEND_BASE_PATH || "");
@@ -243,7 +247,7 @@ async function ingestUploads(jobId, files) {
 
 async function probeOutput(filePath) {
   try {
-    const { stdout } = await runProcess("ffprobe", [
+    const { stdout } = await runProcess(resolveTool("ffprobe"), [
       "-v",
       "error",
       "-print_format",
@@ -273,6 +277,10 @@ function compactJob(job) {
     user: job.user,
     persona: job.persona,
     sideQuest: job.sideQuest,
+    questSlug: job.questSlug || null,
+    questCategory: job.questCategory || null,
+    questDifficulty: job.questDifficulty || null,
+    questXp: job.questXp || null,
     style: job.style,
     aspect: job.aspect,
     targetDuration: job.targetDuration,
@@ -289,6 +297,7 @@ function compactJob(job) {
     duplicateCount: job.duplicates.length,
     duplicates: job.duplicates,
     result: job.result || null,
+    grade: job.grade || null,
     storageMode: job.storageMode || objectStorage.mode(),
     error: job.error || null,
     logTail: (job.logs || []).slice(-80)
@@ -330,6 +339,9 @@ async function runJob(jobId) {
         prompt: job.prompt,
         audience: job.persona,
         sideQuest: job.sideQuest,
+        questDifficulty: job.questDifficulty,
+        questXp: job.questXp,
+        questCategory: job.questCategory,
         aspect: job.aspect,
         targetDuration: job.targetDuration,
         quality: "draft",
@@ -375,6 +387,43 @@ async function runJob(jobId) {
       probe
     };
     onLog("Render complete");
+
+    try {
+      onLog("Grading output against the request");
+      const grade = await gradeQuest(
+        {
+          prompt: job.prompt,
+          persona: job.persona,
+          sideQuest: job.sideQuest,
+          style: job.style,
+          aspect: job.aspect,
+          targetDuration: job.targetDuration,
+          plan: result.plan,
+          finalVideo: result.finalVideo,
+          totalDuration: result.totalDuration,
+          clipCount: result.clips.length,
+          probe
+        },
+        { onLog }
+      );
+      job.grade = grade;
+      onLog(`Grade: ${grade.score}/10 (${grade.verdict}) via ${grade.provider}`);
+      await analytics.recordGrade(job, grade).catch(() => {});
+      if (job.questSlug) {
+        questStore
+          .recordCompletion({
+            slug: job.questSlug,
+            jobId: job.id,
+            gradeScore: grade.score,
+            xpEarned: job.questXp || 0,
+            surface: "web"
+          })
+          .catch(() => {});
+      }
+    } catch (error) {
+      onLog(`Grading skipped: ${error.message}`);
+    }
+
     await writeJob(job);
   } catch (error) {
     job = await readJob(jobId).catch(() => job);
@@ -401,7 +450,80 @@ function sendApp(req, res) {
 }
 
 router.get("/healthz", (req, res) => {
-  res.json({ ok: true, basePath: BASE_PATH || "/", authRequired: Boolean(AUTH_PASSWORD), storage: objectStorage.mode() });
+  res.json({ ok: true, basePath: BASE_PATH || "/", authRequired: Boolean(AUTH_PASSWORD), storage: objectStorage.mode(), quests: questStore.mode(), grader: graderTier() });
+});
+
+router.get("/api/side-quests", requireUser, async (req, res, next) => {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 60, 1), 200);
+    const offset = Math.max(Number(req.query.offset) || 0, 0);
+    const { quests, total, source } = await questStore.list(req.query, { limit, offset });
+    res.json({ quests, total, source, facets: questStore.facets() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/api/side-quests/recommended", requireUser, async (req, res, next) => {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 60, 1), 200);
+    const { quests, total, source } = await questStore.recommend(req.query, { limit });
+    res.json({ quests, total, source, facets: questStore.facets() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/api/side-quests/daily", requireUser, async (req, res, next) => {
+  try {
+    const { quest, source, date } = await questStore.dailyQuest(req.query, req.query.date);
+    if (!quest) {
+      res.status(404).json({ error: "no_quest_match" });
+      return;
+    }
+    res.json({ quests: [quest], quest, source, date, facets: questStore.facets() });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/api/side-quests/random", requireUser, async (req, res, next) => {
+  try {
+    const { quest, source } = await questStore.smartRandom(req.query, { mode: req.query.mode === "uniform" ? "uniform" : "smart" });
+    if (!quest) {
+      res.status(404).json({ error: "no_quest_match" });
+      return;
+    }
+    res.json({ quest, source });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/api/progress", requireUser, async (req, res, next) => {
+  try {
+    const progress = await questStore.getProgress();
+    res.json(progress);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/api/side-quests/pick", requireUser, async (req, res, next) => {
+  try {
+    await questStore.recordPick(req.body?.slug, req.body?.surface === "desktop" ? "desktop" : "web");
+    res.json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/api/analytics", requireUser, async (req, res, next) => {
+  try {
+    res.json({ grader: graderTier(), ...(await analytics.summary()) });
+  } catch (error) {
+    next(error);
+  }
 });
 
 router.post("/api/login", (req, res) => {
@@ -468,6 +590,10 @@ router.post("/api/quests", requireUser, upload.array("videos", 24), async (req, 
     const persona = safeText(req.body.persona, "Gen Z").slice(0, 80);
     const sideQuest = safeText(req.body.sideQuest, "Hackathon proof").slice(0, 80);
     const style = safeText(req.body.style, "fast viral proof").slice(0, 80);
+    const questSlug = safeText(req.body.questSlug, "").slice(0, 80) || null;
+    const questCategory = safeText(req.body.questCategory, "").slice(0, 40) || null;
+    const questDifficulty = ["easy", "medium", "hard", "extreme"].includes(req.body.questDifficulty) ? req.body.questDifficulty : null;
+    const questXp = Math.min(Math.max(Number(req.body.questXp) || 0, 0), 1000000) || null;
     const aspect = ["vertical", "landscape", "square"].includes(req.body.aspect) ? req.body.aspect : "vertical";
     const targetDuration = Math.min(Math.max(Number(req.body.targetDuration) || 18, 6), 60);
     const prompt = safeText(req.body.prompt, `${sideQuest} for ${persona}: ${style}.`).slice(0, 4000);
@@ -481,6 +607,10 @@ router.post("/api/quests", requireUser, upload.array("videos", 24), async (req, 
       user: req.user,
       persona,
       sideQuest,
+      questSlug,
+      questCategory,
+      questDifficulty,
+      questXp,
       style,
       aspect,
       targetDuration,
@@ -492,6 +622,7 @@ router.post("/api/quests", requireUser, upload.array("videos", 24), async (req, 
     job.storageMode = objectStorage.mode();
 
     await writeJob(job);
+    if (questSlug) questStore.recordPick(questSlug, "web").catch(() => {});
     res.status(202).json({ job: compactJob(job) });
     setImmediate(() => runJob(id));
   } catch (error) {
@@ -524,9 +655,15 @@ router.use((error, req, res, next) => {
 
 async function main() {
   await Promise.all([fs.mkdir(TMP_DIR, { recursive: true }), fs.mkdir(UPLOAD_ROOT, { recursive: true }), fs.mkdir(JOB_ROOT, { recursive: true }), fs.mkdir(RUNS_ROOT, { recursive: true })]);
+  analytics.init(DATA_ROOT);
+  const tier = graderTier();
   app.use(BASE_PATH || "/", router);
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Legend web server listening on http://0.0.0.0:${PORT}${BASE_PATH || "/"}`);
+    console.log(`Quest grader level: ${tier.tier} (${tier.model})${tier.multimodal ? " [multimodal]" : ""}`);
+    if (tier.tier === "heuristic") {
+      console.log("  Set LEGEND_GEMINI_API_KEY (preferred) or CLOUDFLARE_WORKERS_AI_TOKEN to enable an AI grader.");
+    }
   });
 }
 
