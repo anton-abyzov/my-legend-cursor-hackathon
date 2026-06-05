@@ -7,6 +7,7 @@ web-data*/
 .wrangler/
 .env
 .env.*
+!.env.example
 .hf-shape/
 .DS_Store
 npm-debug.log*

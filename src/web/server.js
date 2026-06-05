@@ -1,4 +1,5 @@
 const crypto = require("node:crypto");
+const nodeFs = require("node:fs");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const express = require("express");
@@ -7,6 +8,26 @@ const { createSideQuestProject } = require("../engine/sideQuestProject");
 const { runProcess } = require("../engine/process");
 const { isSupportedVideoUpload, supportedFormatsLabel } = require("../engine/videoFormats");
 const objectStorage = require("./lib/objectStorage");
+
+function loadDotEnv(filePath = path.join(process.cwd(), ".env")) {
+  if (!nodeFs.existsSync(filePath)) return;
+  const lines = nodeFs.readFileSync(filePath, "utf8").split(/\r?\n/);
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const splitAt = trimmed.indexOf("=");
+    if (splitAt <= 0) continue;
+    const key = trimmed.slice(0, splitAt).trim();
+    let value = trimmed.slice(splitAt + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    if (!Object.prototype.hasOwnProperty.call(process.env, key)) process.env[key] = value;
+  }
+}
+
+loadDotEnv();
 
 const PORT = Number(process.env.PORT || 4317);
 const BASE_PATH = normalizeBasePath(process.env.LEGEND_BASE_PATH || "");
