@@ -1,6 +1,6 @@
 {
   "name": "legend-hyperframes-desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "macOS desktop MVP for prompt-directed HyperFrames video assembly.",
   "main": "src/main.js",
@@ -8,7 +8,7 @@
     "start": "electron .",
     "web": "node src/web/server.js",
     "pack": "electron-builder --dir",
-    "dist:mac": "electron-builder --mac dmg zip",
+    "dist:mac": "electron-builder --mac dmg zip --publish never",
     "test:e2e": "playwright test",
     "build:quests": "node scripts/buildSideQuests.js",
     "seed:supabase": "node scripts/seedSupabase.js",
