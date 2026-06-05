@@ -7,7 +7,6 @@ const multer = require("multer");
 const { createSideQuestProject } = require("../engine/sideQuestProject");
 const { runProcess } = require("../engine/process");
 const { isSupportedVideoUpload, supportedFormatsLabel } = require("../engine/videoFormats");
-const objectStorage = require("./lib/objectStorage");
 
 function loadDotEnv(filePath = path.join(process.cwd(), ".env")) {
   if (!nodeFs.existsSync(filePath)) return;
@@ -28,6 +27,8 @@ function loadDotEnv(filePath = path.join(process.cwd(), ".env")) {
 }
 
 loadDotEnv();
+
+const objectStorage = require("./lib/objectStorage");
 
 const PORT = Number(process.env.PORT || 4317);
 const BASE_PATH = normalizeBasePath(process.env.LEGEND_BASE_PATH || "");
