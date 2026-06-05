@@ -358,7 +358,7 @@ async function createSideQuestProject(payload, options = {}) {
   const videoPaths = (payload.videoPaths || []).filter(Boolean);
 
   if (!videoPaths.length) {
-    throw new Error("Upload at least one unique video.");
+    throw new Error("Upload at least one unique photo or video.");
   }
 
   const outputRoot = payload.outputRoot || path.join(PROJECT_ROOT, "web-data", "runs");

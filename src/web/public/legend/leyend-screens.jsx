@@ -228,6 +228,10 @@ function isVideoFile(file) {
   return (file.type && file.type.startsWith('video/')) || /\.(mp4|mov|m4v|webm|avi|mkv)$/i.test(file.name || '');
 }
 
+function isImageFile(file) {
+  return (file.type && file.type.startsWith('image/')) || /\.(png|jpe?g|gif|webp|heic|heif|bmp|tiff?)$/i.test(file.name || '');
+}
+
 // Read one picked file into a { src, kind } proof item. Images are downscaled to
 // a jpeg data URL; videos are kept as-is (data URL) so they can play in previews.
 function readProofFile(file) {
@@ -524,10 +528,11 @@ function lyQuestBody(quest, answers) {
   return fd;
 }
 
-// ───────────────────────── Upload (video proof) ─────────────────────────
+// ───────────────────────── Upload (photo + video proof) ─────────────────────────
 function UploadScreen({ quest, answers, onCooking, onBack }) {
   const [files, setFiles] = React.useState([]);
   const [previewUrl, setPreviewUrl] = React.useState(null);
+  const [previewKind, setPreviewKind] = React.useState(null);
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState(null);
   const [progress, setProgress] = React.useState(0);
@@ -541,7 +546,9 @@ function UploadScreen({ quest, answers, onCooking, onBack }) {
     setErr(null);
     setFiles(picked);
     if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setPreviewUrl(URL.createObjectURL(picked[0]));
+    const first = picked[0];
+    setPreviewKind(isVideoFile(first) ? 'video' : 'image');
+    setPreviewUrl(URL.createObjectURL(first));
   };
 
   const totalSize = files.reduce((s, f) => s + f.size, 0);
@@ -577,21 +584,23 @@ function UploadScreen({ quest, answers, onCooking, onBack }) {
       <TopBar onBack={onBack} label="Proof of Legend" />
       <div className="ly-eyebrow"><span className="ly-tick" />Bring back the footage</div>
       <h1 className="ly-h1" style={{ marginTop: 10, fontSize: 31 }}>{quest.title}</h1>
-      <p className="ly-note" style={{ marginTop: 8 }}>{quest.proof || 'Upload the raw clips. The forge will cut them into proof.'}</p>
+      <p className="ly-note" style={{ marginTop: 8 }}>{quest.proof || 'Upload photos or raw clips. The forge will cut them into proof.'}</p>
 
-      <input ref={inputRef} type="file" accept="video/*" multiple onChange={onPick} style={{ display: 'none' }} />
+      <input ref={inputRef} type="file" accept={PROOF_ACCEPT} multiple onChange={onPick} style={{ display: 'none' }} />
       <div className={`ly-upload ly-upload-video${files.length ? ' has-img' : ''}`} onClick={() => inputRef.current && inputRef.current.click()} style={{ marginTop: 20 }}>
         {previewUrl ? (
           <React.Fragment>
-            <video src={previewUrl} muted playsInline preload="metadata" />
+            {previewKind === 'video'
+              ? <video src={previewUrl} muted playsInline preload="metadata" />
+              : <img src={previewUrl} alt="" />}
             <div className="ly-upload-scrim" />
-            <div className="ly-upload-redo"><span className="ly-num">↺ Tap to choose other clips</span></div>
+            <div className="ly-upload-redo"><span className="ly-num">↺ Tap to choose other media</span></div>
           </React.Fragment>
         ) : (
           <div style={{ textAlign: 'center' }}>
             <div className="ly-upload-clap">🎬</div>
-            <div className="ly-eyebrow" style={{ justifyContent: 'center', marginTop: 14 }}>Tap to add video</div>
-            <div className="ly-note" style={{ textAlign: 'center', margin: '4px auto 0' }}>One or many — we cut the best of it</div>
+            <div className="ly-eyebrow" style={{ justifyContent: 'center', marginTop: 14 }}>Tap to add photos or clips</div>
+            <div className="ly-note" style={{ textAlign: 'center', margin: '4px auto 0' }}>Mix images and video — we cut the best of it</div>
           </div>
         )}
       </div>
@@ -599,12 +608,12 @@ function UploadScreen({ quest, answers, onCooking, onBack }) {
       {files.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
           <div className="ly-eyebrow" style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>{files.length} clip{files.length === 1 ? '' : 's'}</span><span>{lyBytes(totalSize)}</span>
+            <span>{files.length} file{files.length === 1 ? '' : 's'}</span><span>{lyBytes(totalSize)}</span>
           </div>
           {files.slice(0, 4).map((f, i) => (
             <div className="ly-clip-row" key={i}>
               <span className="ly-clip-ix"><span className="ly-num">{String(i + 1).padStart(2, '0')}</span></span>
-              <span className="ly-clip-name">{f.name}</span>
+              <span className="ly-clip-name">{f.name}{isImageFile(f) ? ' · photo' : isVideoFile(f) ? ' · clip' : ''}</span>
               <span className="ly-num">{lyBytes(f.size)}</span>
             </div>
           ))}

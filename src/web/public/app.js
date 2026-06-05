@@ -137,7 +137,7 @@ function fileSizeLabel(bytes) {
 function updateUploadMeta() {
   const files = Array.from(els.videoInput.files || []);
   const total = files.reduce((sum, file) => sum + file.size, 0);
-  els.uploadMeta.textContent = files.length ? `${files.length} file${files.length === 1 ? "" : "s"} / ${fileSizeLabel(total)}` : "Select at least one video";
+  els.uploadMeta.textContent = files.length ? `${files.length} file${files.length === 1 ? "" : "s"} / ${fileSizeLabel(total)}` : "Select at least one photo or video";
   // Block submission until a video exists; only toggle when idle (not mid-render).
   if (els.submitButton.textContent === "Render Quest") {
     els.submitButton.disabled = files.length === 0;
@@ -665,7 +665,7 @@ els.questForm.addEventListener("submit", async (event) => {
   const files = Array.from(els.videoInput.files || []);
 
   if (!files.length) {
-    els.uploadMeta.textContent = "Select at least one video";
+    els.uploadMeta.textContent = "Select at least one photo or video";
     return;
   }
 

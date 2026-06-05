@@ -597,6 +597,11 @@ textarea { font: inherit; }
 .grade-card.is-passable { border-color: color-mix(in oklab, var(--secondary), transparent 40%); }
 .grade-card.is-weak { border-color: color-mix(in oklab, var(--danger), transparent 45%); }
 
+.grade-card.is-ships .grade-flip-side { border-color: color-mix(in oklab, var(--highlight), transparent 40%); }
+.grade-card.is-strong .grade-flip-side { border-color: color-mix(in oklab, var(--primary), transparent 45%); }
+.grade-card.is-passable .grade-flip-side { border-color: color-mix(in oklab, var(--secondary), transparent 40%); }
+.grade-card.is-weak .grade-flip-side { border-color: color-mix(in oklab, var(--danger), transparent 45%); }
+
 .grade-head {
   display: flex;
   align-items: center;

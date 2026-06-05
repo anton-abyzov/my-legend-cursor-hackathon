@@ -4,7 +4,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { resolveTool } = require("./ffmpegPaths");
 const { runProcess } = require("./process");
-const { prepareVideoInput } = require("./videoFormats");
+const { prepareMediaInput } = require("./videoFormats");
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -154,17 +154,20 @@ async function detectAudibleSegments(filePath, duration, onLog) {
 async function analyzeVideos(videoPaths, options = {}) {
   const { onLog } = options;
   const media = [];
-  const cacheDir = path.join(os.tmpdir(), "legend-video-cache");
+  const cacheDir = path.join(os.tmpdir(), "legend-media-cache");
   await fs.mkdir(cacheDir, { recursive: true });
 
   for (let index = 0; index < videoPaths.length; index += 1) {
     const originalPath = videoPaths[index];
     if (onLog) onLog(`Analyzing ${path.basename(originalPath)}\n`);
 
-    const prepared = await prepareVideoInput(originalPath, { onLog, cacheDir });
+    const prepared = await prepareMediaInput(originalPath, { onLog, cacheDir });
     const workingPath = prepared.path;
     const probe = await probeVideo(workingPath);
-    const audibleSegments = await detectAudibleSegments(workingPath, probe.duration, onLog);
+    const audibleSegments =
+      prepared.sourceKind === "image"
+        ? [{ start: 0, end: roundTime(probe.duration) }]
+        : await detectAudibleSegments(workingPath, probe.duration, onLog);
     const safeName = toSafeName(workingPath, index);
 
     media.push({
@@ -172,6 +175,7 @@ async function analyzeVideos(videoPaths, options = {}) {
       originalPath,
       workingPath,
       converted: prepared.converted,
+      sourceKind: prepared.sourceKind || "video",
       safeName,
       title: titleFromFile(originalPath),
       duration: roundTime(probe.duration),

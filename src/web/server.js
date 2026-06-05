@@ -7,7 +7,7 @@ const multer = require("multer");
 const { createSideQuestProject } = require("../engine/sideQuestProject");
 const { runProcess } = require("../engine/process");
 const { resolveTool } = require("../engine/ffmpegPaths");
-const { isSupportedVideoUpload, supportedFormatsLabel } = require("../engine/videoFormats");
+const { isSupportedMediaUpload, supportedFormatsLabel } = require("../engine/videoFormats");
 
 function loadDotEnv(filePath = path.join(process.cwd(), ".env")) {
   if (!nodeFs.existsSync(filePath)) return;
@@ -63,11 +63,11 @@ const upload = multer({
     fileSize: MAX_UPLOAD_MB * 1024 * 1024
   },
   fileFilter(req, file, callback) {
-    if (isSupportedVideoUpload(file.originalname, file.mimetype)) {
+    if (isSupportedMediaUpload(file.originalname, file.mimetype)) {
       callback(null, true);
       return;
     }
-    callback(new Error(`Unsupported video format. Use ${supportedFormatsLabel()}.`));
+    callback(new Error(`Unsupported media format. Use ${supportedFormatsLabel()}.`));
   }
 });
 
@@ -233,7 +233,7 @@ function safeText(value, fallback = "") {
 }
 
 function safeFilename(name, index, hash) {
-  const ext = path.extname(name || "").toLowerCase().replace(/[^a-z0-9.]/g, "") || ".mp4";
+  const ext = path.extname(name || "").toLowerCase().replace(/[^a-z0-9.]/g, "") || ".bin";
   const stem = path
     .basename(name || "clip", ext)
     .replace(/[^a-zA-Z0-9._-]+/g, "-")
@@ -852,7 +852,7 @@ router.post("/api/quests", allowGuest, upload.array("videos", 24), async (req, r
     const { uploads, duplicates } = await ingestUploads(id, req.files);
 
     if (!uploads.length) {
-      res.status(400).json({ error: "no_unique_videos", duplicates });
+      res.status(400).json({ error: "no_unique_uploads", duplicates });
       return;
     }
 
@@ -921,8 +921,8 @@ router.use((error, req, res, next) => {
     res.status(400).json({ error: error.code, message: error.message });
     return;
   }
-  if (error && /unsupported video format/i.test(error.message)) {
-    res.status(400).json({ error: "unsupported_video_format", message: error.message });
+  if (error && /unsupported media format/i.test(error.message)) {
+    res.status(400).json({ error: "unsupported_media_format", message: error.message });
     return;
   }
   res.status(500).json({ error: "server_error", message: error.message });

@@ -61,10 +61,10 @@ app.on("activate", () => {
 
 ipcMain.handle("videos:select", async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
-    title: "Choose source videos",
+    title: "Choose source media",
     properties: ["openFile", "multiSelections"],
     filters: [
-      { name: "Video", extensions: ["mp4", "mov", "m4v", "webm", "avi", "mkv"] },
+      { name: "Media", extensions: ["mp4", "mov", "m4v", "webm", "avi", "mkv", "png", "jpg", "jpeg", "gif", "webp", "heic", "heif"] },
       { name: "All Files", extensions: ["*"] }
     ]
   });

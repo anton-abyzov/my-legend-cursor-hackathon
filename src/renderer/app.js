@@ -65,7 +65,7 @@ function renderVideos() {
 
   if (!state.videos.length) {
     els.videoList.className = "video-list empty";
-    els.videoList.textContent = "No videos selected";
+    els.videoList.textContent = "No media selected";
     setBusy(state.busy);
     return;
   }

@@ -458,7 +458,7 @@ async function createHyperframesProject(payload, options = {}) {
   const videoPaths = (payload.videoPaths || []).filter(Boolean);
 
   if (!videoPaths.length) {
-    throw new Error("Select at least one video.");
+    throw new Error("Select at least one photo or video.");
   }
 
   const outputRoot = payload.outputRoot || path.join(PROJECT_ROOT, "runs");
