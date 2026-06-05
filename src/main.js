@@ -2,6 +2,7 @@ const { app, BrowserWindow, dialog, ipcMain, shell } = require("electron");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { createHyperframesProject, renderHyperframesProject } = require("./engine/hyperframesProject");
+const questStore = require("./web/lib/questStore");
 
 let mainWindow;
 
@@ -77,6 +78,13 @@ ipcMain.handle("project:render", async (event, payload) => {
     outputUrl: pathToFileURL(result.outputPath).toString()
   };
 });
+
+ipcMain.handle("quests:recommend", (_event, filters) => questStore.recommend(filters || {}, { limit: 60 }));
+ipcMain.handle("quests:browse", (_event, filters) => questStore.list(filters || {}, { limit: 120 }));
+ipcMain.handle("quests:daily", (_event, filters) => questStore.dailyQuest(filters || {}));
+ipcMain.handle("quests:random", (_event, filters) => questStore.smartRandom(filters || {}));
+ipcMain.handle("quests:progress", () => questStore.getProgress());
+ipcMain.handle("quests:facets", () => questStore.facets());
 
 ipcMain.handle("path:reveal", async (_event, targetPath) => {
   if (!targetPath) return false;

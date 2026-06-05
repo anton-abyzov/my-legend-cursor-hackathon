@@ -5,6 +5,7 @@ runs/
 sources/
 web-data*/
 .wrangler/
+supabase/.temp/
 .env
 .env.*
 !.env.example

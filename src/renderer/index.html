@@ -23,6 +23,20 @@
           </div>
         </div>
 
+        <section class="panel quest-panel">
+          <div class="panel-head">
+            <h2>Side quest</h2>
+          </div>
+          <button type="button" id="questSlot" class="quest-slot is-empty">
+            <div class="quest-slot-main">
+              <strong id="questSlotTitle">No quest selected</strong>
+              <p id="questSlotDesc">Pick a side quest to start.</p>
+            </div>
+            <div class="quest-slot-badges" id="questSlotBadges"></div>
+            <span class="quest-slot-cta">Choose</span>
+          </button>
+        </section>
+
         <button id="selectVideos" class="primary-button" type="button">
           <span class="button-icon">+</span>
           Choose videos
@@ -113,6 +127,48 @@
         </section>
       </section>
     </main>
+
+    <div id="questPicker" class="quest-picker is-hidden">
+      <div class="quest-picker-box">
+        <header class="quest-picker-head">
+          <div>
+            <h2>Choose your side quest</h2>
+            <p id="questPickerMeta">Loading quests</p>
+          </div>
+          <button type="button" id="questPickerClose" class="ghost-button">Close</button>
+        </header>
+
+        <div class="quest-filters">
+          <div class="quest-modes" id="questModes" role="tablist">
+            <button type="button" class="seg is-active" data-mode="recommended">For you</button>
+            <button type="button" class="seg" data-mode="browse">Browse all</button>
+            <button type="button" class="seg" data-mode="daily">Daily</button>
+          </div>
+          <input type="search" id="questSearch" class="quest-search" placeholder="Search quests..." />
+          <div class="chip-row" id="difficultyChips" data-facet="difficulty">
+            <button type="button" class="chip is-active" data-value="all">All</button>
+            <button type="button" class="chip" data-value="easy">Easy</button>
+            <button type="button" class="chip" data-value="medium">Medium</button>
+            <button type="button" class="chip" data-value="hard">Hard</button>
+            <button type="button" class="chip" data-value="extreme">Extreme</button>
+          </div>
+          <div class="chip-row" id="costChips" data-facet="cost">
+            <button type="button" class="chip is-active" data-value="all">Any cost</button>
+            <button type="button" class="chip" data-value="free">Free</button>
+            <button type="button" class="chip" data-value="cheap">Cheap</button>
+            <button type="button" class="chip" data-value="paid">Paid</button>
+          </div>
+          <div class="quest-filter-row">
+            <select id="categorySelect" class="quest-category">
+              <option value="all">All categories</option>
+            </select>
+            <button type="button" id="rollRandom" class="primary-button">Roll random</button>
+          </div>
+        </div>
+
+        <div id="questResults" class="quest-results"></div>
+      </div>
+    </div>
 
     <script src="./app.js"></script>
   </body>

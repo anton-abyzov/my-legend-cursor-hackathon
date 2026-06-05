@@ -2,7 +2,12 @@ const state = {
   videos: [],
   project: null,
   render: null,
-  busy: false
+  busy: false,
+  selectedQuest: null,
+  questFilters: { difficulty: "all", cost: "all", category: "all", search: "" },
+  questMode: "recommended",
+  progress: null,
+  searchTimer: null
 };
 
 const els = {
@@ -21,8 +26,25 @@ const els = {
   cutPlan: document.getElementById("cutPlan"),
   previewSlot: document.getElementById("previewSlot"),
   logOutput: document.getElementById("logOutput"),
-  clearLog: document.getElementById("clearLog")
+  clearLog: document.getElementById("clearLog"),
+  questSlot: document.getElementById("questSlot"),
+  questSlotTitle: document.getElementById("questSlotTitle"),
+  questSlotDesc: document.getElementById("questSlotDesc"),
+  questSlotBadges: document.getElementById("questSlotBadges"),
+  questPicker: document.getElementById("questPicker"),
+  questPickerClose: document.getElementById("questPickerClose"),
+  questPickerMeta: document.getElementById("questPickerMeta"),
+  questSearch: document.getElementById("questSearch"),
+  difficultyChips: document.getElementById("difficultyChips"),
+  costChips: document.getElementById("costChips"),
+  categorySelect: document.getElementById("categorySelect"),
+  rollRandom: document.getElementById("rollRandom"),
+  questResults: document.getElementById("questResults"),
+  questModes: document.getElementById("questModes")
 };
+
+const DIFF_RANK = { easy: 1, medium: 2, hard: 3, extreme: 4 };
+const DIFF_LABEL = { easy: "Easy", medium: "Medium", hard: "Hard", extreme: "Extreme" };
 
 function appendLog(line) {
   els.logOutput.textContent += line;
@@ -99,13 +121,207 @@ function escapeHtml(value) {
 }
 
 function payload() {
+  const quest = state.selectedQuest;
   return {
     videoPaths: state.videos.map((video) => video.path),
     prompt: els.prompt.value,
     audience: els.audience.value,
     aspect: els.aspect.value,
-    targetDuration: Number(els.targetDuration.value) || 30
+    targetDuration: Number(els.targetDuration.value) || 30,
+    sideQuest: quest ? quest.title : null,
+    questSlug: quest ? quest.slug : null,
+    questCategory: quest ? quest.category : null,
+    questDifficulty: quest ? quest.difficulty : null,
+    questXp: quest ? quest.total_xp : null
   };
+}
+
+/* ── quest picker + smart selection ──────────────────────────── */
+function questBadges(quest) {
+  const badges = [
+    `<span class="badge dif-${quest.difficulty}">${DIFF_LABEL[quest.difficulty] || quest.difficulty}</span>`,
+    `<span class="badge xp">${quest.total_xp} XP</span>`,
+    `<span class="badge">${escapeHtml(quest.category)}</span>`
+  ];
+  if (quest.cost && quest.cost !== "free") badges.push(`<span class="badge">${escapeHtml(quest.cost)}</span>`);
+  return badges.join("");
+}
+
+function renderQuestSlot() {
+  const quest = state.selectedQuest;
+  const cta = els.questSlot.querySelector(".quest-slot-cta");
+  if (!quest) {
+    els.questSlot.classList.add("is-empty");
+    els.questSlot.classList.remove("is-set");
+    els.questSlotTitle.textContent = "No quest selected";
+    els.questSlotDesc.textContent = "Pick a side quest to start.";
+    els.questSlotBadges.innerHTML = "";
+    cta.textContent = "Choose";
+    return;
+  }
+  els.questSlot.classList.remove("is-empty");
+  els.questSlot.classList.add("is-set");
+  els.questSlotTitle.textContent = quest.title;
+  els.questSlotDesc.textContent = quest.description;
+  els.questSlotBadges.innerHTML = questBadges(quest);
+  cta.textContent = "Change";
+}
+
+function questPromptLine(quest) {
+  return `Side quest: "${quest.title}" (${quest.category}, ${quest.difficulty}, ${quest.total_xp} XP) — ${quest.description}`;
+}
+
+function selectQuest(quest) {
+  state.selectedQuest = quest;
+  renderQuestSlot();
+  const line = questPromptLine(quest);
+  const base = "Create a no-silence Gen Z side quest reel from these clips. Cut to the strongest audible moments, add kinetic captions, keep the pacing fast, and prove the quest was completed.";
+  els.prompt.value = `${base}\n${line}`;
+  els.audience.value = `Gen Z · ${quest.category} side quest`;
+  closePicker();
+}
+
+function renderProgressHeader() {
+  const p = state.progress;
+  els.questPickerMeta.textContent = p
+    ? `Level ${p.level} · ${(p.earnedXp || 0).toLocaleString()} XP · ${(p.completedSlugs || []).length} completed`
+    : "Catalog";
+}
+
+async function loadProgress() {
+  try {
+    state.progress = await window.legend.quests.progress();
+  } catch {
+    state.progress = { earnedXp: 0, level: 1, completedSlugs: [], bestGradeBySlug: {} };
+  }
+  renderProgressHeader();
+}
+
+function unlockedRank() {
+  return Math.min(4, state.progress?.level || 1);
+}
+
+function renderQuestResults(quests) {
+  if (!quests.length) {
+    els.questResults.innerHTML = `<div class="quest-empty">No quests match these filters.</div>`;
+    return;
+  }
+  const completed = new Set(state.progress?.completedSlugs || []);
+  const bestGrades = state.progress?.bestGradeBySlug || {};
+  const unlocked = unlockedRank();
+  state.questCache = quests;
+
+  els.questResults.innerHTML = quests
+    .map((quest) => {
+      const isDone = completed.has(quest.slug);
+      const best = bestGrades[quest.slug];
+      const locked = (DIFF_RANK[quest.difficulty] || 2) > unlocked;
+      const flags = [];
+      if (isDone) flags.push(`<span class="badge done">Done</span>`);
+      if (best != null) flags.push(`<span class="badge grade">${Number(best).toFixed(1)}/10</span>`);
+      if (locked) flags.push(`<span class="badge lock">Lvl ${DIFF_RANK[quest.difficulty]}</span>`);
+      return `
+        <button type="button" class="quest-card${isDone ? " is-done" : ""}" data-slug="${escapeHtml(quest.slug)}">
+          <h3>${escapeHtml(quest.title)}</h3>
+          <p>${escapeHtml(quest.description)}</p>
+          <div class="quest-card-badges">${questBadges(quest)}${flags.join("")}</div>
+        </button>`;
+    })
+    .join("");
+}
+
+function currentFilters() {
+  const f = state.questFilters;
+  const out = {};
+  if (f.difficulty !== "all") out.difficulty = f.difficulty;
+  if (f.cost !== "all") out.cost = f.cost;
+  if (f.category !== "all") out.category = f.category;
+  if (f.search) out.search = f.search;
+  return out;
+}
+
+async function loadQuests() {
+  els.questResults.innerHTML = `<div class="quest-empty">Loading quests...</div>`;
+  try {
+    const filters = currentFilters();
+    let data;
+    if (state.questMode === "browse") data = await window.legend.quests.browse(filters);
+    else if (state.questMode === "daily") data = await window.legend.quests.daily(filters);
+    else data = await window.legend.quests.recommend(filters);
+
+    if (els.categorySelect.options.length <= 1) {
+      const facets = await window.legend.quests.facets();
+      const cats = (facets.categories || []).map((c) => `<option value="${escapeHtml(c.name)}">${escapeHtml(c.name)} (${c.count})</option>`).join("");
+      els.categorySelect.innerHTML = `<option value="all">All categories</option>${cats}`;
+    }
+    renderQuestResults(data.quests || (data.quest ? [data.quest] : []));
+  } catch (error) {
+    els.questResults.innerHTML = `<div class="quest-empty">${escapeHtml(error.message)}</div>`;
+  }
+}
+
+async function openPicker() {
+  els.questPicker.classList.remove("is-hidden");
+  await loadProgress();
+  await loadQuests();
+}
+
+function closePicker() {
+  els.questPicker.classList.add("is-hidden");
+}
+
+function setupPicker() {
+  els.questSlot.addEventListener("click", openPicker);
+  els.questPickerClose.addEventListener("click", closePicker);
+  els.questPicker.addEventListener("click", (event) => {
+    if (event.target === els.questPicker) closePicker();
+  });
+  els.questResults.addEventListener("click", (event) => {
+    const card = event.target.closest("[data-slug]");
+    if (!card) return;
+    const quest = (state.questCache || []).find((q) => q.slug === card.dataset.slug);
+    if (quest) selectQuest(quest);
+  });
+  els.difficultyChips.addEventListener("click", (event) => {
+    const chip = event.target.closest(".chip");
+    if (!chip) return;
+    state.questFilters.difficulty = chip.dataset.value;
+    els.difficultyChips.querySelectorAll(".chip").forEach((c) => c.classList.toggle("is-active", c === chip));
+    loadQuests();
+  });
+  els.costChips.addEventListener("click", (event) => {
+    const chip = event.target.closest(".chip");
+    if (!chip) return;
+    state.questFilters.cost = chip.dataset.value;
+    els.costChips.querySelectorAll(".chip").forEach((c) => c.classList.toggle("is-active", c === chip));
+    loadQuests();
+  });
+  els.categorySelect.addEventListener("change", () => {
+    state.questFilters.category = els.categorySelect.value;
+    loadQuests();
+  });
+  els.questSearch.addEventListener("input", () => {
+    clearTimeout(state.searchTimer);
+    state.searchTimer = setTimeout(() => {
+      state.questFilters.search = els.questSearch.value.trim();
+      loadQuests();
+    }, 220);
+  });
+  els.rollRandom.addEventListener("click", async () => {
+    try {
+      const data = await window.legend.quests.random(currentFilters());
+      if (data.quest) selectQuest(data.quest);
+    } catch (error) {
+      els.questResults.innerHTML = `<div class="quest-empty">${escapeHtml(error.message)}</div>`;
+    }
+  });
+  els.questModes.addEventListener("click", (event) => {
+    const seg = event.target.closest(".seg");
+    if (!seg) return;
+    state.questMode = seg.dataset.mode;
+    els.questModes.querySelectorAll(".seg").forEach((s) => s.classList.toggle("is-active", s === seg));
+    loadQuests();
+  });
 }
 
 els.selectVideos.addEventListener("click", async () => {
@@ -174,6 +390,9 @@ els.clearLog.addEventListener("click", () => {
 });
 
 window.legend.onJobLog((line) => appendLog(line));
+setupPicker();
+renderQuestSlot();
 renderVideos();
 renderCutPlan(null);
 renderPreview(null);
+openPicker();
