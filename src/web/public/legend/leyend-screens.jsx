@@ -42,6 +42,27 @@ function WelcomeScreen({ onBegin, onSignIn }) {
 
 }
 
+// ───────────────────────── Sign in ─────────────────────────
+function SignInScreen({ onContinue, onBack }) {
+  const [name, setName] = React.useState('');
+  const submit = () => { const v = name.trim(); if (v) onContinue(v); };
+  return (
+    <Screen blobs top={60} bottom={44} contentStyle={{ justifyContent: 'flex-start' }}>
+      <TopBar onBack={onBack} label="Welcome back" />
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+        <div className="ly-eyebrow"><span className="ly-tick" />Welcome back</div>
+        <h1 className="ly-h1" style={{ marginTop: 10 }}>{'Reclaim your\npath'}</h1>
+        <p className="ly-note">Speak the name on your legend to return to your constellation.</p>
+        <div className="ly-field" style={{ marginTop: 24 }}>
+          <span className="ly-field-caret">&gt;</span>
+          <input className="ly-input" autoFocus value={name} placeholder="The name on your legend" onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} />
+        </div>
+      </div>
+      <Btn onClick={submit} disabled={!name.trim()} arrow style={{ marginTop: 38 }}>Enter your path</Btn>
+    </Screen>);
+
+}
+
 // ───────────────────────── Quiz ─────────────────────────
 function QuizScreen({ onComplete, onBack }) {
   const [step, setStep] = React.useState(0);
@@ -200,13 +221,23 @@ function QuestScreen({ quest, done, onToggle, onComplete, onBack }) {
 }
 
 // ───────────────────────── Proof of legend ─────────────────────────
-function ProofScreen({ quest, onSubmit, onBack }) {
-  const [img, setImg] = React.useState(null);
-  const inputRef = React.useRef(null);
-  const onFile = (e) => {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
+const PROOF_ACCEPT = 'image/*,video/*,.png,.jpg,.jpeg,.gif,.webp,.heic,.mp4,.mov,.m4v,.webm,.avi,.mkv';
+
+function isVideoFile(file) {
+  return (file.type && file.type.startsWith('video/')) || /\.(mp4|mov|m4v|webm|avi|mkv)$/i.test(file.name || '');
+}
+
+// Read one picked file into a { src, kind } proof item. Images are downscaled to
+// a jpeg data URL; videos are kept as-is (data URL) so they can play in previews.
+function readProofFile(file) {
+  return new Promise((resolve) => {
     const reader = new FileReader();
+    reader.onerror = () => resolve(null);
+    if (isVideoFile(file)) {
+      reader.onload = (ev) => resolve({ src: ev.target.result, kind: 'video' });
+      reader.readAsDataURL(file);
+      return;
+    }
     reader.onload = (ev) => {
       const image = new Image();
       image.onload = () => {
@@ -214,11 +245,43 @@ function ProofScreen({ quest, onSubmit, onBack }) {
         const c = document.createElement('canvas');
         c.width = Math.round(image.width * sc); c.height = Math.round(image.height * sc);
         c.getContext('2d').drawImage(image, 0, 0, c.width, c.height);
-        try { setImg(c.toDataURL('image/jpeg', 0.82)); } catch (err) { setImg(ev.target.result); }
+        let out;
+        try { out = c.toDataURL('image/jpeg', 0.82); } catch (err) { out = ev.target.result; }
+        resolve({ src: out, kind: 'image' });
       };
+      image.onerror = () => resolve({ src: ev.target.result, kind: 'image' });
       image.src = ev.target.result;
     };
     reader.readAsDataURL(file);
+  });
+}
+
+// Normalize proof (array of items, or a legacy single data-url string) to items.
+function proofItems(proof) {
+  if (Array.isArray(proof)) return proof.filter(Boolean);
+  if (proof) return [{ src: proof, kind: 'image' }];
+  return [];
+}
+
+function ProofMedia({ item, alt }) {
+  if (!item) return null;
+  if (item.kind === 'video') {
+    return <video src={item.src} muted loop autoPlay playsInline />;
+  }
+  return <img src={item.src} alt={alt || 'your proof'} />;
+}
+
+function ProofScreen({ quest, onSubmit, onBack }) {
+  const [items, setItems] = React.useState([]);
+  const inputRef = React.useRef(null);
+  const onFiles = (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (!files.length) return;
+    Promise.all(files.map(readProofFile)).then((results) => {
+      const next = results.filter(Boolean);
+      if (next.length) setItems((prev) => prev.concat(next));
+    });
   };
   return (
     <Screen top={60} bottom={38} contentStyle={{ justifyContent: 'flex-start' }}>
@@ -227,26 +290,34 @@ function ProofScreen({ quest, onSubmit, onBack }) {
       <h1 className="ly-h1" style={{ marginTop: 10, fontSize: 31 }}>{quest.title}</h1>
       <p className="ly-essence" style={{ marginTop: 12, fontSize: 16 }}>{quest.essence}</p>
       <div className="ly-eyebrow" style={{ marginTop: 20 }}>Your proof</div>
-      <p className="ly-note" style={{ marginTop: 6 }}>{quest.proof || 'Capture the moment. Upload a photo as proof it was real.'}</p>
+      <p className="ly-note" style={{ marginTop: 6 }}>{quest.proof || 'Capture the moment. Upload photos or videos as proof it was real.'}</p>
 
-      <input ref={inputRef} type="file" accept="image/*" capture="environment" onChange={onFile} style={{ display: 'none' }} />
-      <div className={`ly-upload${img ? ' has-img' : ''}`} onClick={() => inputRef.current && inputRef.current.click()} style={{ marginTop: 22 }}>
-        {img ? (
+      <input ref={inputRef} type="file" accept={PROOF_ACCEPT} capture="environment" multiple onChange={onFiles} style={{ display: 'none' }} />
+      <div className={`ly-upload${items.length ? ' has-img' : ''}`} onClick={() => inputRef.current && inputRef.current.click()} style={{ marginTop: 22 }}>
+        {items.length ? (
           <React.Fragment>
-            <img src={img} alt="your proof" />
-            <div className="ly-upload-redo"><span className="ly-num">↺ Tap to retake</span></div>
+            <div className="ly-proof-grid">
+              {items.map((it, i) => (
+                <div className="ly-proof-cell" key={i}>
+                  {it.kind === 'video'
+                    ? <video src={it.src} muted loop autoPlay playsInline className="ly-proof-thumb" />
+                    : <img src={it.src} alt={`proof ${i + 1}`} className="ly-proof-thumb" />}
+                </div>
+              ))}
+            </div>
+            <div className="ly-upload-redo"><span className="ly-num">↺ Tap to add more · {items.length} selected</span></div>
           </React.Fragment>
         ) : (
           <div style={{ textAlign: 'center' }}>
             <div className="ly-upload-plus">+</div>
             <div className="ly-eyebrow" style={{ justifyContent: 'center', marginTop: 14 }}>Tap to upload</div>
-            <div className="ly-note" style={{ textAlign: 'center', margin: '4px auto 0' }}>A photo or screen-grab</div>
+            <div className="ly-note" style={{ textAlign: 'center', margin: '4px auto 0' }}>Photos or videos — pick as many as you like</div>
           </div>
         )}
       </div>
 
       <div style={{ flex: 1, minHeight: 18 }} />
-      <Btn onClick={() => onSubmit(img)} disabled={!img} arrow style={{ marginTop: 18 }}>Seal this legend</Btn>
+      <Btn onClick={() => onSubmit(items.length ? items : null)} disabled={!items.length} arrow style={{ marginTop: 18 }}>Seal this legend</Btn>
       <button className="ly-link" onClick={() => onSubmit(null)} style={{ margin: '12px auto 0', display: 'block' }}>Keep this one private</button>
     </Screen>);
 
@@ -261,9 +332,9 @@ function CompleteScreen({ quest, tagline, proof, onShare, onJournal }) {
       <div className="ly-reveal-in" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
         <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div className="ly-glow" />
-          {proof ? (
+          {proofItems(proof).length ? (
             <div className="ly-polaroid">
-              <img src={proof} alt="your proof" />
+              <ProofMedia item={proofItems(proof)[0]} />
               <span className="ly-polaroid-badge"><Sigil style={{ fontSize: 20, color: 'var(--primary)' }}>{quest.sigil}</Sigil></span>
             </div>
           ) : (
@@ -299,12 +370,12 @@ function ShareScreen({ quest, tagline, completed, proof, onBack, toast }) {
             <span className="ly-num">Nº {edition}</span>
           </div>
           <div className="ly-share-media">
-            {proof ? <img src={proof} alt="your proof" /> : <Sigil style={{ fontSize: 64, color: 'var(--primary)', textShadow: '0 0 26px var(--glow)' }}>{quest.sigil}</Sigil>}
+            {proofItems(proof).length ? <ProofMedia item={proofItems(proof)[0]} /> : <Sigil style={{ fontSize: 64, color: 'var(--primary)', textShadow: '0 0 26px var(--glow)' }}>{quest.sigil}</Sigil>}
             <span className="ly-share-media-tag">A quest, lived</span>
           </div>
           <div style={{ textAlign: 'center', padding: '2px 0 4px' }}>
             <div className="ly-h1" style={{ fontSize: 26, lineHeight: 1.02 }}>{quest.title}</div>
-            {!proof && <p className="ly-essence" style={{ fontSize: 14.5, maxWidth: 250, margin: '12px auto 0' }}>{quest.essence}</p>}
+            {!proofItems(proof).length && <p className="ly-essence" style={{ fontSize: 14.5, maxWidth: 250, margin: '12px auto 0' }}>{quest.essence}</p>}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span className="ly-num">{tagline ? tagline.slice(0, 22) : 'A TRAVELER'}</span>
@@ -376,4 +447,344 @@ function JournalScreen({ tagline, completed, active, onSeek, onOpenActive }) {
 
 }
 
-Object.assign(window, { WelcomeScreen, QuizScreen, SeekScreen, RevealScreen, QuestScreen, ProofScreen, CompleteScreen, ShareScreen, JournalScreen, TopBar });
+// ═══════════════════════════════════════════════════════════════
+//  Legend render pipeline — Upload → Cooking → Verify (AI grade)
+// ═══════════════════════════════════════════════════════════════
+
+const LY_CFG = (typeof window !== 'undefined' && window.LEGEND_CFG) || { basePath: '' };
+const LY_BASE = LY_CFG.basePath || '';
+function lyApiPath(p) { return `${LY_BASE}${p}`; }
+
+function lyBytes(n) {
+  if (!n) return '0 B';
+  const u = ['B', 'KB', 'MB', 'GB']; let v = n, i = 0;
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i += 1; }
+  return `${v.toFixed(i === 0 ? 0 : 1)} ${u[i]}`;
+}
+
+// Map a hardcoded Legend quest + quiz answers onto the server's job body.
+function lyPersona(answers) {
+  const age = Number(answers && answers.age);
+  if (!age) return 'Gen Z';
+  if (age <= 27) return 'Gen Z';
+  if (age <= 43) return 'Millennial';
+  return 'Gen X';
+}
+function lyQuestBody(quest, answers) {
+  const fd = new FormData();
+  fd.append('title', quest.title);
+  fd.append('sideQuest', quest.title);
+  fd.append('persona', lyPersona(answers));
+  fd.append('style', 'cinematic proof');
+  fd.append('aspect', 'vertical');
+  fd.append('targetDuration', '18');
+  fd.append('prompt', `Prove this side quest was lived: ${quest.essence} Select the strongest audible moments, cut silence, and end on a payoff frame.`);
+  const diff = { 1: 'easy', 2: 'medium', 3: 'hard' }[quest.scale];
+  if (diff) fd.append('questDifficulty', diff);
+  fd.append('questXp', String((quest.scale || 0) * 100));
+  return fd;
+}
+
+// ───────────────────────── Upload (video proof) ─────────────────────────
+function UploadScreen({ quest, answers, onCooking, onBack }) {
+  const [files, setFiles] = React.useState([]);
+  const [previewUrl, setPreviewUrl] = React.useState(null);
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState(null);
+  const inputRef = React.useRef(null);
+
+  React.useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
+
+  const onPick = (e) => {
+    const picked = Array.from(e.target.files || []);
+    if (!picked.length) return;
+    setErr(null);
+    setFiles(picked);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(URL.createObjectURL(picked[0]));
+  };
+
+  const totalSize = files.reduce((s, f) => s + f.size, 0);
+
+  const begin = async () => {
+    if (!files.length || busy) return;
+    setBusy(true); setErr(null);
+    try {
+      const fd = lyQuestBody(quest, answers);
+      for (const f of files) fd.append('videos', f);
+      const res = await fetch(lyApiPath('/api/quests'), { method: 'POST', credentials: 'same-origin', body: fd });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.message || body.error || 'Upload failed');
+      onCooking(body.job.id);
+    } catch (e) {
+      setErr(e.message || 'Upload failed');
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Screen top={60} bottom={38} contentStyle={{ justifyContent: 'flex-start' }}>
+      <TopBar onBack={onBack} label="Proof of Legend" />
+      <div className="ly-eyebrow"><span className="ly-tick" />Bring back the footage</div>
+      <h1 className="ly-h1" style={{ marginTop: 10, fontSize: 31 }}>{quest.title}</h1>
+      <p className="ly-note" style={{ marginTop: 8 }}>{quest.proof || 'Upload the raw clips. The forge will cut them into proof.'}</p>
+
+      <input ref={inputRef} type="file" accept="video/*" multiple onChange={onPick} style={{ display: 'none' }} />
+      <div className={`ly-upload ly-upload-video${files.length ? ' has-img' : ''}`} onClick={() => inputRef.current && inputRef.current.click()} style={{ marginTop: 20 }}>
+        {previewUrl ? (
+          <React.Fragment>
+            <video src={previewUrl} muted playsInline preload="metadata" />
+            <div className="ly-upload-scrim" />
+            <div className="ly-upload-redo"><span className="ly-num">↺ Tap to choose other clips</span></div>
+          </React.Fragment>
+        ) : (
+          <div style={{ textAlign: 'center' }}>
+            <div className="ly-upload-clap">🎬</div>
+            <div className="ly-eyebrow" style={{ justifyContent: 'center', marginTop: 14 }}>Tap to add video</div>
+            <div className="ly-note" style={{ textAlign: 'center', margin: '4px auto 0' }}>One or many — we cut the best of it</div>
+          </div>
+        )}
+      </div>
+
+      {files.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
+          <div className="ly-eyebrow" style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span>{files.length} clip{files.length === 1 ? '' : 's'}</span><span>{lyBytes(totalSize)}</span>
+          </div>
+          {files.slice(0, 4).map((f, i) => (
+            <div className="ly-clip-row" key={i}>
+              <span className="ly-clip-ix"><span className="ly-num">{String(i + 1).padStart(2, '0')}</span></span>
+              <span className="ly-clip-name">{f.name}</span>
+              <span className="ly-num">{lyBytes(f.size)}</span>
+            </div>
+          ))}
+          {files.length > 4 && <div className="ly-note" style={{ margin: 0 }}>+ {files.length - 4} more</div>}
+        </div>
+      )}
+
+      {err && <p className="ly-note" style={{ color: 'var(--primary)', marginTop: 14 }}>{err}</p>}
+
+      <div style={{ flex: 1, minHeight: 18 }} />
+      <Btn onClick={begin} disabled={!files.length || busy} arrow style={{ marginTop: 18 }}>{busy ? 'Lighting the forge…' : 'Cook my proof'}</Btn>
+    </Screen>);
+
+}
+
+// ───────────────────────── Cooking (parallel render) ─────────────────────────
+const LY_STAGES = [
+  { key: 'upload', label: 'Ingest' },
+  { key: 'plan', label: 'Plan' },
+  { key: 'render', label: 'Render' },
+  { key: 'grade', label: 'Judge' },
+];
+
+function CookingScreen({ jobId, quest, onVerify, onRetry, onBack }) {
+  const [job, setJob] = React.useState(null);
+  const [pct, setPct] = React.useState(6);
+  const [failed, setFailed] = React.useState(null);
+  const timerRef = React.useRef(null);
+  const easeRef = React.useRef(null);
+  const procStart = React.useRef(null);
+  const targetRef = React.useRef(6);
+  const aliveRef = React.useRef(true);
+
+  // Derive a smooth pseudo-progress target from job status + elapsed time.
+  const computeTarget = (j) => {
+    if (!j) return 6;
+    if (j.status === 'queued') return 8;
+    if (j.status === 'complete') return 100;
+    if (j.status === 'failed') return targetRef.current;
+    // processing — asymptotic ramp 15% → 90%
+    if (!procStart.current) procStart.current = Date.now();
+    const elapsed = (Date.now() - procStart.current) / 1000;
+    return 15 + (90 - 15) * (1 - Math.exp(-elapsed / 38));
+  };
+
+  React.useEffect(() => {
+    aliveRef.current = true;
+    const poll = async () => {
+      try {
+        const res = await fetch(lyApiPath(`/api/quests/${jobId}`), { credentials: 'same-origin' });
+        const body = await res.json();
+        if (!aliveRef.current) return;
+        if (!res.ok) throw new Error(body.message || body.error || 'Lost the signal');
+        const j = body.job;
+        setJob(j);
+        targetRef.current = computeTarget(j);
+        if (j.status === 'complete') {
+          setPct(100);
+          setTimeout(() => { if (aliveRef.current) onVerify(j); }, 650);
+          return;
+        }
+        if (j.status === 'failed') {
+          setFailed(j.error || 'The forge collapsed mid-render.');
+          return;
+        }
+        timerRef.current = setTimeout(poll, 2200);
+      } catch (e) {
+        if (!aliveRef.current) return;
+        timerRef.current = setTimeout(poll, 2600);
+      }
+    };
+    poll();
+    // ease the displayed number toward the moving target
+    easeRef.current = setInterval(() => {
+      setPct((p) => {
+        const t = targetRef.current;
+        if (Math.abs(t - p) < 0.4) return t;
+        return p + (t - p) * 0.12;
+      });
+    }, 110);
+    return () => {
+      aliveRef.current = false;
+      clearTimeout(timerRef.current);
+      clearInterval(easeRef.current);
+    };
+  }, [jobId]);
+
+  const logs = (job && job.logTail) || ['Summoning the render daemon…'];
+  const tail = logs.slice(-7);
+  const stageState = (key) => {
+    const st = job && job.progress && job.progress.stages && job.progress.stages[key];
+    if (st && st.status) return st.status;
+    // fallback heuristic from overall pct
+    if (key === 'upload') return pct > 12 ? 'done' : 'active';
+    if (key === 'plan') return pct > 30 ? 'done' : pct > 12 ? 'active' : 'pending';
+    if (key === 'render') return pct > 88 ? 'done' : pct > 30 ? 'active' : 'pending';
+    if (key === 'grade') return pct >= 99 ? 'active' : 'pending';
+    return 'pending';
+  };
+
+  if (failed) {
+    return (
+      <Screen blobs top={64} bottom={44} center contentStyle={{ justifyContent: 'center', alignItems: 'center', textAlign: 'center' }}>
+        <div className="ly-reveal-in" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <Sigil style={{ fontSize: 54, color: 'var(--primary)', textShadow: '0 0 24px var(--glow)' }}>⚠</Sigil>
+          <div className="ly-eyebrow" style={{ marginTop: 18, justifyContent: 'center' }}><span className="ly-tick" />The render broke</div>
+          <h1 className="ly-h1" style={{ marginTop: 8, fontSize: 30 }}>The forge faltered</h1>
+          <p className="ly-note" style={{ textAlign: 'center', maxWidth: 300, marginTop: 10 }}>{String(failed).split('\n')[0].slice(0, 220)}</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center', marginTop: 30, width: '100%' }}>
+            <Btn onClick={onRetry} arrow>Try another take</Btn>
+            <button className="ly-link" onClick={onBack}>Back to your path</button>
+          </div>
+        </div>
+      </Screen>);
+
+  }
+
+  const shown = Math.round(Math.min(100, Math.max(0, pct)));
+  return (
+    <Screen blobs intense top={60} bottom={40} contentStyle={{ justifyContent: 'flex-start' }}>
+      <TopBar label="The Forge" />
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', marginTop: 4 }}>
+        <div className="ly-cook-orb">
+          <div className="ly-cook-ring is-spin" />
+          <div className="ly-cook-pct">{shown}%</div>
+        </div>
+        <div className="ly-eyebrow" style={{ marginTop: 18, justifyContent: 'center' }}><span className="ly-tick" />Cooking your proof</div>
+        <h1 className="ly-h1" style={{ marginTop: 8, fontSize: 28 }}>{quest.title}</h1>
+        <p className="ly-note" style={{ textAlign: 'center', maxWidth: 300, marginTop: 8 }}>A parallel session is cutting your clips, scoring the moments, and sealing the edit. Stay with it.</p>
+      </div>
+
+      <div className="ly-bar" style={{ marginTop: 22 }}>
+        <div className="ly-bar-fill" style={{ width: `${shown}%` }}>{shown > 4 && shown < 100 && <span className="ly-bar-shine" />}</div>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 16, flexWrap: 'wrap', gap: 10 }}>
+        {LY_STAGES.map((s) => {
+          const st = stageState(s.key);
+          return (
+            <div className="ly-stage-row" key={s.key}>
+              <span className={`ly-stage-dot${st === 'active' ? ' is-active' : ''}${st === 'done' ? ' is-done' : ''}`} />
+              <span style={{ color: st === 'pending' ? 'var(--ink-faint)' : 'var(--ink)' }}>{s.label}</span>
+            </div>);
+
+        })}
+      </div>
+
+      <div className="ly-eyebrow" style={{ marginTop: 20 }}>Ritual log</div>
+      <div className="ly-log" style={{ marginTop: 8 }}>
+        {tail.map((line, i) => <div className="ly-log-line" key={i}>{line}</div>)}
+      </div>
+      <div style={{ flex: 1, minHeight: 12 }} />
+    </Screen>);
+
+}
+
+// ───────────────────────── Verify (AI grade gate) ─────────────────────────
+const LY_BREAKDOWN = { promptMatch: 'Prompt match', visualQuality: 'Visual quality', pacing: 'Pacing', audienceFit: 'Audience fit' };
+
+function VerifyScreen({ job, quest, onSeal, onRetry }) {
+  const result = (job && job.result) || {};
+  const grade = job && job.grade;
+  const score = grade ? Number(grade.score || 0) : null;
+  // outputUrl from the server is already base-path / mount aware — use as-is.
+  const videoSrc = result.outputUrl || null;
+
+  return (
+    <Screen top={58} bottom={38} contentStyle={{ justifyContent: 'flex-start' }}>
+      <TopBar label="The Verdict" />
+      <div className="ly-eyebrow"><span className="ly-tick" />The universe has watched it</div>
+      <h1 className="ly-h1" style={{ marginTop: 8, fontSize: 29 }}>{quest.title}</h1>
+
+      {videoSrc ? (
+        <video className="ly-verify-video" style={{ marginTop: 16 }} src={videoSrc} controls playsInline preload="metadata" />
+      ) : (
+        <div className="ly-verify-video" style={{ marginTop: 16, height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span className="ly-num">Output unavailable</span>
+        </div>
+      )}
+
+      {result.totalDuration != null && (
+        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+          <Tag>{Number(result.totalDuration).toFixed(0)}s</Tag>
+          {result.clipCount != null && <Tag>{result.clipCount} clip{result.clipCount === 1 ? '' : 's'}</Tag>}
+          <Tag>cinematic proof</Tag>
+        </div>
+      )}
+
+      <div className="ly-eyebrow" style={{ marginTop: 22 }}>AI verification</div>
+      {grade ? (
+        <div className="ly-grade" style={{ marginTop: 10 }}>
+          <div className="ly-grade-head">
+            <div className="ly-grade-score">{score.toFixed(1)}<sub>/10</sub></div>
+            <div>
+              <div className="ly-grade-verdict">{grade.verdict || 'Judged'}</div>
+              <div className="ly-num" style={{ marginTop: 6 }}>{grade.provider || 'grader'}{grade.model ? ` · ${grade.model}` : ''}</div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 11, marginTop: 18 }}>
+            {Object.entries(grade.breakdown || {}).map(([k, v]) => {
+              const val = Number(v) || 0;
+              return (
+                <div className="ly-gradebar" key={k}>
+                  <span className="ly-gradebar-label">{LY_BREAKDOWN[k] || k}</span>
+                  <span className="ly-gradebar-track"><span className="ly-gradebar-fill" style={{ width: `${Math.max(0, Math.min(100, val * 10))}%` }} /></span>
+                  <span className="ly-gradebar-val">{val.toFixed(1)}</span>
+                </div>);
+
+            })}
+          </div>
+          {grade.rationale && <p className="ly-note" style={{ marginTop: 16 }}>{grade.rationale}</p>}
+          {(grade.gaps || []).length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
+              <div className="ly-eyebrow" style={{ margin: 0 }}>What the omen still wants</div>
+              {grade.gaps.map((g, i) => <div className="ly-gap" key={i}>{g}</div>)}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="ly-grade" style={{ marginTop: 10 }}>
+          <div className="ly-grade-verdict">Proof accepted</div>
+          <p className="ly-note" style={{ marginTop: 8 }}>The grader sat this one out, but your render survived the forge. Seal it and move on.</p>
+        </div>
+      )}
+
+      <div style={{ flex: 1, minHeight: 18 }} />
+      <Btn onClick={() => onSeal(job)} arrow style={{ marginTop: 18 }}>Seal this legend</Btn>
+      <button className="ly-link" onClick={onRetry} style={{ margin: '12px auto 0', display: 'block' }}>Try another take</button>
+    </Screen>);
+
+}
+
+Object.assign(window, { WelcomeScreen, SignInScreen, QuizScreen, SeekScreen, RevealScreen, QuestScreen, ProofScreen, CompleteScreen, ShareScreen, JournalScreen, TopBar, UploadScreen, CookingScreen, VerifyScreen });

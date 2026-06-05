@@ -10,8 +10,11 @@ const state = {
   selectedQuest: null,
   questFilters: { difficulty: "all", cost: "all", category: "all", search: "" },
   questSource: null,
-  searchTimer: null
+  searchTimer: null,
+  bar: { display: 0, target: 0, raf: null }
 };
+
+const STEP_ICON = { done: "✓", active: "", failed: "✕", skipped: "–", pending: "" };
 
 const els = {
   sessionState: document.querySelector("#sessionState"),
@@ -27,10 +30,22 @@ const els = {
   verificationGrid: document.querySelector("#verificationGrid"),
   outputVideo: document.querySelector("#outputVideo"),
   outputLink: document.querySelector("#outputLink"),
+  progressPanel: document.querySelector("#progressPanel"),
+  progressStage: document.querySelector("#progressStage"),
+  progressEta: document.querySelector("#progressEta"),
+  progressFill: document.querySelector("#progressFill"),
+  progressSteps: document.querySelector("#progressSteps"),
+  logDetails: document.querySelector("#logDetails"),
   logTail: document.querySelector("#logTail"),
   loginGate: document.querySelector("#loginGate"),
   loginForm: document.querySelector("#loginForm"),
   loginError: document.querySelector("#loginError"),
+  loginSubtitle: document.querySelector("#loginSubtitle"),
+  emailField: document.querySelector("#emailField"),
+  signInButton: document.querySelector("#signInButton"),
+  signUpButton: document.querySelector("#signUpButton"),
+  googleWrap: document.querySelector("#googleWrap"),
+  googleButton: document.querySelector("#googleButton"),
   questSlot: document.querySelector("#questSlot"),
   questSlotTitle: document.querySelector("#questSlotTitle"),
   questSlotDesc: document.querySelector("#questSlotDesc"),
@@ -122,7 +137,11 @@ function fileSizeLabel(bytes) {
 function updateUploadMeta() {
   const files = Array.from(els.videoInput.files || []);
   const total = files.reduce((sum, file) => sum + file.size, 0);
-  els.uploadMeta.textContent = files.length ? `${files.length} file${files.length === 1 ? "" : "s"} / ${fileSizeLabel(total)}` : "No files selected";
+  els.uploadMeta.textContent = files.length ? `${files.length} file${files.length === 1 ? "" : "s"} / ${fileSizeLabel(total)}` : "Select at least one video";
+  // Block submission until a video exists; only toggle when idle (not mid-render).
+  if (els.submitButton.textContent === "Render Quest") {
+    els.submitButton.disabled = files.length === 0;
+  }
 }
 
 function statusLabel(job) {
@@ -135,6 +154,74 @@ function statusLabel(job) {
 
 function metric(label, value) {
   return `<div class="metric"><span>${label}</span><strong>${value || "-"}</strong></div>`;
+}
+
+function etaLabel(seconds) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "";
+  if (seconds < 60) return `~${Math.round(seconds)}s left`;
+  const mins = Math.floor(seconds / 60);
+  const rest = Math.round(seconds % 60);
+  return `~${mins}m${rest ? ` ${rest}s` : ""} left`;
+}
+
+function animateBar() {
+  const step = () => {
+    const diff = state.bar.target - state.bar.display;
+    if (Math.abs(diff) < 0.15) {
+      state.bar.display = state.bar.target;
+      state.bar.raf = null;
+      els.progressFill.style.width = `${state.bar.display}%`;
+      return;
+    }
+    state.bar.display += diff * 0.08;
+    els.progressFill.style.width = `${state.bar.display}%`;
+    state.bar.raf = window.requestAnimationFrame(step);
+  };
+  if (!state.bar.raf) state.bar.raf = window.requestAnimationFrame(step);
+}
+
+function setBar(target, { immediate = false } = {}) {
+  state.bar.target = Math.max(0, Math.min(100, target));
+  if (immediate) {
+    if (state.bar.raf) window.cancelAnimationFrame(state.bar.raf);
+    state.bar.raf = null;
+    state.bar.display = state.bar.target;
+    els.progressFill.style.width = `${state.bar.display}%`;
+    return;
+  }
+  animateBar();
+}
+
+function renderProgress(job) {
+  const progress = job && job.progress;
+  const active = job && (job.status === "queued" || job.status === "processing");
+
+  if (!progress) {
+    els.progressPanel.classList.add("is-hidden");
+    if (state.bar.raf) window.cancelAnimationFrame(state.bar.raf);
+    state.bar.raf = null;
+    state.bar.display = 0;
+    state.bar.target = 0;
+    return;
+  }
+
+  els.progressPanel.classList.remove("is-hidden");
+  els.progressPanel.classList.toggle("is-failed", progress.status === "failed");
+
+  const current = progress.stages.find((stage) => stage.key === progress.currentStage);
+  const headline = progress.status === "complete" ? "Complete" : progress.status === "failed" ? "Render failed" : current ? current.label : "Starting";
+  els.progressStage.textContent = headline;
+  els.progressEta.textContent = active ? etaLabel(progress.etaSeconds) : progress.status === "complete" ? "Done" : "";
+
+  els.progressSteps.innerHTML = progress.stages
+    .map((stage) => {
+      const icon = stage.status === "active" ? `<span class="step-spinner"></span>` : `<span class="step-icon">${STEP_ICON[stage.status] || ""}</span>`;
+      const detail = stage.detail ? `<em>${escapeHtml(stage.detail)}</em>` : "";
+      return `<li class="progress-step is-${stage.status}">${icon}<span class="step-label">${escapeHtml(stage.label)}</span>${detail}</li>`;
+    })
+    .join("");
+
+  setBar(progress.percent, { immediate: progress.status === "complete" });
 }
 
 function escapeHtml(value) {
@@ -200,6 +287,7 @@ function renderVerification(job) {
   if (!job) {
     els.verificationGrid.innerHTML = "";
     renderGrade(null);
+    renderProgress(null);
     els.outputVideo.classList.add("is-hidden");
     els.outputLink.classList.add("is-hidden");
     els.logTail.textContent = "";
@@ -213,7 +301,11 @@ function renderVerification(job) {
   const resolution = videoStream.width && videoStream.height ? `${videoStream.width}x${videoStream.height}` : "-";
   const size = probe.format?.size ? fileSizeLabel(Number(probe.format.size)) : "-";
 
-  els.jobStatus.textContent = `${statusLabel(job)} - ${job.title}`;
+  const headline = job.progress && job.progress.currentStage && job.status === "processing"
+    ? (job.progress.stages.find((stage) => stage.key === job.progress.currentStage)?.label || statusLabel(job))
+    : statusLabel(job);
+  els.jobStatus.textContent = `${headline} - ${job.title}`;
+  renderProgress(job);
   els.verificationGrid.innerHTML = [
     metric("Status", statusLabel(job)),
     metric("Unique uploads", String(job.uploads.length)),
@@ -623,19 +715,72 @@ els.logoutButton.addEventListener("click", async () => {
   await checkSession();
 });
 
-els.loginForm.addEventListener("submit", async (event) => {
-  event.preventDefault();
-  els.loginError.textContent = "";
-  const password = new FormData(els.loginForm).get("password");
+function isSupabaseAuth() {
+  return config.authMode === "supabase";
+}
 
+function setupLoginUi() {
+  if (isSupabaseAuth()) {
+    els.emailField.classList.remove("is-hidden");
+    els.signUpButton.classList.remove("is-hidden");
+    els.loginSubtitle.textContent = "Sign in or sign up to start your side quests.";
+    if (config.googleEnabled) els.googleWrap.classList.remove("is-hidden");
+    els.googleButton.addEventListener("click", () => {
+      window.location.href = apiPath("/auth/google");
+    });
+    els.signUpButton.addEventListener("click", () => submitCredentials("signup"));
+  } else {
+    els.loginSubtitle.textContent = "Enter the access password.";
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const authError = params.get("auth_error");
+  if (authError) {
+    els.loginError.textContent = `Google sign-in failed: ${authError}`;
+    window.history.replaceState({}, "", apiPath("/"));
+  }
+}
+
+async function submitCredentials(intent) {
+  els.loginError.textContent = "";
+  const form = new FormData(els.loginForm);
+
+  if (!isSupabaseAuth()) {
+    try {
+      await api("/api/login", { method: "POST", body: JSON.stringify({ password: form.get("password") }) });
+      await checkSession();
+    } catch (error) {
+      els.loginError.textContent = "Bad password";
+    }
+    return;
+  }
+
+  const email = String(form.get("email") || "").trim();
+  const password = String(form.get("password") || "");
+  if (!email || !password) {
+    els.loginError.textContent = "Email and password are required.";
+    return;
+  }
+
+  const endpoint = intent === "signup" ? "/api/signup" : "/api/login";
   try {
-    await api("/api/login", { method: "POST", body: JSON.stringify({ password }) });
+    const result = await api(endpoint, { method: "POST", body: JSON.stringify({ email, password }) });
+    if (intent === "signup" && result.needsConfirmation) {
+      els.loginError.textContent = "Account created. Check your email to confirm, then sign in.";
+      return;
+    }
     await checkSession();
   } catch (error) {
-    els.loginError.textContent = "Bad password";
+    els.loginError.textContent = intent === "signup" ? `Sign up failed: ${error.message}` : "Invalid email or password.";
   }
+}
+
+els.loginForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  submitCredentials("login");
 });
 
+setupLoginUi();
 setupPicker();
 renderQuestSlot();
 syncPrompt();

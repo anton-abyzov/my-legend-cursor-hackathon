@@ -581,6 +581,137 @@ textarea { font: inherit; }
   line-height: 1.5;
 }
 
+/* ── staged render progress ────────────────────────────────── */
+.progress-panel {
+  margin-bottom: 18px;
+  padding: 20px 22px;
+  border: 1px solid var(--line-strong);
+  border-radius: 18px;
+  background: linear-gradient(165deg, rgba(35, 40, 69, 0.7), rgba(20, 24, 41, 0.7));
+  box-shadow: 0 0 40px color-mix(in oklab, var(--glow), transparent 60%);
+}
+
+.progress-panel.is-failed { border-color: color-mix(in oklab, var(--danger), transparent 45%); }
+
+.progress-headline {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.progress-headline strong {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 30px;
+  line-height: 0.9;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  text-shadow: 0 0 22px var(--glow);
+}
+
+.progress-headline span {
+  flex: 0 0 auto;
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.progress-bar {
+  height: 10px;
+  border-radius: 9999px;
+  background: var(--surface-alt);
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  width: 0;
+  height: 100%;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, var(--secondary), var(--primary), var(--highlight));
+  background-size: 200% 100%;
+  box-shadow: 0 0 16px var(--glow);
+  animation: pp-shimmer 2.4s linear infinite;
+}
+
+.progress-panel.is-failed .progress-bar-fill {
+  background: var(--danger);
+  animation: none;
+}
+
+@keyframes pp-shimmer {
+  from { background-position: 0% 0; }
+  to { background-position: 200% 0; }
+}
+
+.progress-steps {
+  display: grid;
+  gap: 8px;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.progress-step {
+  display: grid;
+  grid-template-columns: 20px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  transition: color 0.2s ease;
+}
+
+.progress-step .step-label { text-transform: uppercase; font-weight: 700; }
+.progress-step em { font-style: normal; color: var(--ink-soft); font-size: 11px; text-align: right; }
+
+.progress-step .step-icon {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.progress-step.is-done { color: var(--ink); }
+.progress-step.is-done .step-icon { color: #05100d; border-color: transparent; background: var(--highlight); box-shadow: 0 0 12px var(--volt-glow); }
+
+.progress-step.is-active { color: var(--ink); }
+.progress-step.is-active .step-label { color: var(--primary); text-shadow: 0 0 14px var(--glow); }
+
+.progress-step.is-failed { color: var(--danger); }
+.progress-step.is-failed .step-icon { color: var(--danger); border-color: color-mix(in oklab, var(--danger), transparent 40%); }
+
+.progress-step.is-skipped { color: var(--ink-faint); }
+
+.step-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid color-mix(in oklab, var(--primary), transparent 65%);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  justify-self: center;
+  animation: pp-spin 0.8s linear infinite;
+}
+
+@keyframes pp-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-bar-fill { animation: none; }
+  .step-spinner { animation-duration: 1.6s; }
+}
+
 /* ── output + log ──────────────────────────────────────────── */
 .output-video {
   display: block;
@@ -592,10 +723,31 @@ textarea { font: inherit; }
   box-shadow: 0 24px 56px rgba(0, 0, 0, 0.55);
 }
 
-.log-tail {
-  min-height: 140px;
-  max-height: 260px;
+.log-details {
   margin: 18px 0 0;
+}
+
+.log-details > summary {
+  cursor: pointer;
+  list-style: none;
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+.log-details > summary::-webkit-details-marker { display: none; }
+.log-details > summary::before { content: "▸ "; color: var(--primary); }
+.log-details[open] > summary::before { content: "▾ "; }
+.log-details > summary:hover { color: var(--ink); }
+
+.log-tail {
+  min-height: 120px;
+  max-height: 260px;
+  margin: 12px 0 0;
   overflow: auto;
   padding: 16px;
   border: 1px solid var(--line);
@@ -656,6 +808,63 @@ textarea { font: inherit; }
   font-size: 12px;
   letter-spacing: 0.04em;
 }
+
+.login-box .login-subtitle {
+  min-height: 0;
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  letter-spacing: 0.02em;
+}
+
+.login-actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--ink-faint);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.login-divider::before,
+.login-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line-strong);
+}
+
+#googleWrap { display: grid; gap: 16px; }
+
+.google-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: #ffffff;
+  color: #1f2430;
+  font-family: var(--sans, inherit);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+.google-button:hover { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); }
+.google-button:active { transform: translateY(1px) scale(0.99); }
+.google-icon { flex: 0 0 auto; }
 
 /* ── quest slot (selected quest in the builder) ───────────────── */
 .quest-slot-field { gap: 8px; }

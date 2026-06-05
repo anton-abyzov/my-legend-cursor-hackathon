@@ -31,8 +31,10 @@ loadDotEnv();
 
 const { gradeQuest, graderTier } = require("../engine/questGrader");
 const objectStorage = require("./lib/objectStorage");
+const jobProgress = require("./lib/jobProgress");
 const analytics = require("./lib/analytics");
 const questStore = require("./lib/questStore");
+const authStore = require("./lib/authStore");
 
 const PORT = Number(process.env.PORT || 4317);
 const BASE_PATH = normalizeBasePath(process.env.LEGEND_BASE_PATH || "");
@@ -47,6 +49,10 @@ const AUTH_USER = process.env.LEGEND_WEB_USER || "anton";
 const AUTH_PASSWORD = process.env.LEGEND_WEB_PASSWORD || "";
 const SESSION_SECRET = process.env.LEGEND_SESSION_SECRET || crypto.randomBytes(32).toString("hex");
 const COOKIE_NAME = "legend_auth";
+const SB_COOKIE = "legend_sb";
+const SB_PKCE_COOKIE = "legend_sb_pkce";
+const AUTH_REQUIRED = authStore.enabled() || Boolean(AUTH_PASSWORD);
+const AUTH_MODE = authStore.enabled() ? "supabase" : AUTH_PASSWORD ? "password" : "dev";
 
 const app = express();
 const router = express.Router();
@@ -108,7 +114,44 @@ function verifySession(value) {
   return crypto.timingSafeEqual(expectedBuffer, valueBuffer) ? username : null;
 }
 
-function currentUser(req) {
+function cookieSecure() {
+  return process.env.LEGEND_COOKIE_SECURE === "1" ? "; Secure" : "";
+}
+
+function appendCookie(res, value) {
+  res.append("Set-Cookie", value);
+}
+
+/**
+ * Resolve the authenticated user. Supabase path verifies the access token (and
+ * transparently refreshes it), legacy path verifies the HMAC password cookie.
+ * Returns null when unauthenticated. `res` is optional and only used to write a
+ * refreshed Supabase session cookie.
+ */
+async function resolveUser(req, res) {
+  if (authStore.enabled()) {
+    const cookies = parseCookies(req.headers.cookie);
+    const raw = cookies[SB_COOKIE];
+    if (!raw) return null;
+
+    let session;
+    try {
+      session = JSON.parse(Buffer.from(raw, "base64url").toString("utf8"));
+    } catch {
+      return null;
+    }
+
+    let user = await authStore.getUserFromToken(session.access_token);
+    if (!user && session.refresh_token) {
+      const refreshed = await authStore.refresh(session.refresh_token);
+      if (refreshed && refreshed.session) {
+        if (res) setSbCookie(res, refreshed.session);
+        user = refreshed.user || (await authStore.getUserFromToken(refreshed.session.access_token));
+      }
+    }
+    return user || null;
+  }
+
   if (!AUTH_PASSWORD) {
     return { id: AUTH_USER, name: AUTH_USER, authMode: "dev" };
   }
@@ -118,27 +161,68 @@ function currentUser(req) {
   return username ? { id: username, name: username, authMode: "password" } : null;
 }
 
-function requireUser(req, res, next) {
-  const user = currentUser(req);
-  if (!user) {
-    res.status(401).json({ error: "authentication_required" });
-    return;
+async function requireUser(req, res, next) {
+  try {
+    const user = await resolveUser(req, res);
+    if (!user) {
+      res.status(401).json({ error: "authentication_required" });
+      return;
+    }
+    req.user = user;
+    next();
+  } catch (error) {
+    next(error);
   }
-  req.user = user;
-  next();
+}
+
+/**
+ * Guest fallback used ONLY by the Legend showcase job endpoints. Real users
+ * still resolve normally (Supabase/password); when no session is present we
+ * fall back to an anonymous traveler so the seamless quest -> upload -> render
+ * flow works without a login. This keeps authed deployments unchanged and does
+ * NOT loosen any other route.
+ */
+async function allowGuest(req, res, next) {
+  try {
+    const user = await resolveUser(req, res);
+    req.user = user || { id: "guest", name: "Traveler", authMode: "guest" };
+    next();
+  } catch (error) {
+    next(error);
+  }
 }
 
 function setSessionCookie(res, username) {
   const maxAge = 60 * 60 * 24 * 7;
-  const secure = process.env.LEGEND_COOKIE_SECURE === "1" ? "; Secure" : "";
-  res.setHeader(
-    "Set-Cookie",
-    `${COOKIE_NAME}=${encodeURIComponent(signUser(username))}; Path=${BASE_PATH || "/"}; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`
-  );
+  appendCookie(res, `${COOKIE_NAME}=${encodeURIComponent(signUser(username))}; Path=${BASE_PATH || "/"}; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${cookieSecure()}`);
+}
+
+function setSbCookie(res, session) {
+  const maxAge = 60 * 60 * 24 * 7;
+  const payload = Buffer.from(
+    JSON.stringify({ access_token: session.access_token, refresh_token: session.refresh_token, expires_at: session.expires_at })
+  ).toString("base64url");
+  appendCookie(res, `${SB_COOKIE}=${payload}; Path=${BASE_PATH || "/"}; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${cookieSecure()}`);
+}
+
+function setPkceCookie(res, bundle) {
+  const payload = Buffer.from(bundle, "utf8").toString("base64url");
+  appendCookie(res, `${SB_PKCE_COOKIE}=${payload}; Path=${BASE_PATH || "/"}; HttpOnly; SameSite=Lax; Max-Age=600${cookieSecure()}`);
 }
 
 function clearSessionCookie(res) {
-  res.setHeader("Set-Cookie", `${COOKIE_NAME}=; Path=${BASE_PATH || "/"}; HttpOnly; SameSite=Lax; Max-Age=0`);
+  appendCookie(res, `${COOKIE_NAME}=; Path=${BASE_PATH || "/"}; HttpOnly; SameSite=Lax; Max-Age=0`);
+  appendCookie(res, `${SB_COOKIE}=; Path=${BASE_PATH || "/"}; HttpOnly; SameSite=Lax; Max-Age=0`);
+}
+
+function clearPkceCookie(res) {
+  appendCookie(res, `${SB_PKCE_COOKIE}=; Path=${BASE_PATH || "/"}; HttpOnly; SameSite=Lax; Max-Age=0`);
+}
+
+function callbackUrl(req) {
+  const host = req.get("host");
+  const proto = req.protocol || "http";
+  return `${proto}://${host}${BASE_PATH}/auth/callback`;
 }
 
 function safeText(value, fallback = "") {
@@ -165,7 +249,10 @@ function jobPath(id) {
 async function writeJob(job) {
   job.updatedAt = new Date().toISOString();
   await fs.mkdir(JOB_ROOT, { recursive: true });
-  await fs.writeFile(jobPath(job.id), JSON.stringify(job, null, 2));
+  const target = jobPath(job.id);
+  const tmp = `${target}.${process.pid}.tmp`;
+  await fs.writeFile(tmp, JSON.stringify(job, null, 2));
+  await fs.rename(tmp, target);
 }
 
 async function readJob(id) {
@@ -300,11 +387,13 @@ function compactJob(job) {
     grade: job.grade || null,
     storageMode: job.storageMode || objectStorage.mode(),
     error: job.error || null,
+    progress: jobProgress.summarize(job.progress),
     logTail: (job.logs || []).slice(-80)
   };
 }
 
-async function materializeUploads(job, onLog) {
+async function materializeUploads(job, onLog, onStage) {
+  if (onStage) onStage("upload", { status: "active", detail: `${job.uploads.length} file${job.uploads.length === 1 ? "" : "s"}` });
   for (const upload of job.uploads) {
     try {
       await fs.access(upload.path);
@@ -314,24 +403,56 @@ async function materializeUploads(job, onLog) {
       await objectStorage.downloadFile(upload.objectKey, upload.path);
     }
   }
+  if (onStage) onStage("upload", { status: "done" });
 }
 
 async function runJob(jobId) {
   let job = await readJob(jobId);
   const logs = job.logs || [];
+  job.logs = logs;
+
+  const renderStats = await jobProgress.loadRenderStats(DATA_ROOT);
+  job.progress = jobProgress.createProgress(renderStats.avgRenderSeconds);
+
+  let lastWrite = 0;
+  let writePending = null;
+  const flush = async () => {
+    lastWrite = Date.now();
+    await writeJob(job).catch(() => {});
+  };
+  const persist = (force) => {
+    if (force) {
+      writePending = null;
+      return flush();
+    }
+    if (writePending) return writePending;
+    const wait = Math.max(0, 1200 - (Date.now() - lastWrite));
+    writePending = new Promise((resolve) => {
+      setTimeout(() => {
+        writePending = null;
+        flush().then(resolve);
+      }, wait);
+    });
+    return writePending;
+  };
+
   const onLog = (line) => {
     const text = String(line || "").trimEnd();
     if (!text) return;
     logs.push(...text.split(/\n/).slice(-24));
     if (logs.length > 220) logs.splice(0, logs.length - 220);
+    persist(false);
+  };
+  const onStage = (key, patch) => {
+    jobProgress.applyStage(job.progress, key, patch);
+    persist(typeof patch.percent !== "number");
   };
 
   try {
     job.status = "processing";
-    job.logs = logs;
     onLog("Render started");
-    await writeJob(job);
-    await materializeUploads(job, onLog);
+    await flush();
+    await materializeUploads(job, onLog, onStage);
 
     const result = await createSideQuestProject(
       {
@@ -348,8 +469,11 @@ async function runJob(jobId) {
         fps: 24,
         outputRoot: RUNS_ROOT
       },
-      { onLog }
+      { onLog, onStage }
     );
+
+    const renderSeconds = jobProgress.renderDurationSeconds(job.progress);
+    if (renderSeconds) jobProgress.recordRenderDuration(DATA_ROOT, renderSeconds).catch(() => {});
 
     const probe = await probeOutput(result.finalVideo);
     const outputKey = `outputs/${job.id}/side-quest-final.mp4`;
@@ -367,9 +491,6 @@ async function runJob(jobId) {
       contentType: "text/html",
       metadata: { jobid: job.id }
     });
-    job = await readJob(jobId);
-    job.logs = logs;
-    job.status = "complete";
     job.storageMode = objectStorage.mode();
     job.result = {
       outputUrl: outputStorage ? objectStorage.appUrlForKey(outputKey, mountPath) : urlForRunPath(result.finalVideo),
@@ -389,6 +510,7 @@ async function runJob(jobId) {
     onLog("Render complete");
 
     try {
+      onStage("grade", { status: "active" });
       onLog("Grading output against the request");
       const grade = await gradeQuest(
         {
@@ -416,32 +538,39 @@ async function runJob(jobId) {
             jobId: job.id,
             gradeScore: grade.score,
             xpEarned: job.questXp || 0,
-            surface: "web"
+            surface: "web",
+            userId: job.user?.id || null
           })
           .catch(() => {});
       }
+      onStage("grade", { status: "done", detail: `${grade.score}/10 ${grade.verdict}` });
     } catch (error) {
+      onStage("grade", { status: "skipped", detail: "Grading skipped" });
       onLog(`Grading skipped: ${error.message}`);
     }
 
-    await writeJob(job);
+    job.status = "complete";
+    jobProgress.finishProgress(job.progress, "complete");
+    await persist(true);
   } catch (error) {
-    job = await readJob(jobId).catch(() => job);
     job.logs = logs;
     job.status = "failed";
     job.error = error.stack || error.message;
+    jobProgress.finishProgress(job.progress, "failed");
     onLog(`Render failed: ${error.message}`);
-    await writeJob(job);
+    await persist(true);
   }
 }
 
-function sendApp(req, res) {
-  fs.readFile(path.join(PUBLIC_ROOT, "index.html"), "utf8")
+function sendHtmlFile(relPath, res) {
+  fs.readFile(path.join(PUBLIC_ROOT, relPath), "utf8")
     .then((html) => {
       res.type("html").send(
         html
           .replace(/%BASE_PATH%/g, BASE_PATH)
-          .replace(/%AUTH_REQUIRED%/g, AUTH_PASSWORD ? "true" : "false")
+          .replace(/%AUTH_REQUIRED%/g, AUTH_REQUIRED ? "true" : "false")
+          .replace(/%AUTH_MODE%/g, AUTH_MODE)
+          .replace(/%GOOGLE_ENABLED%/g, authStore.googleEnabled() ? "true" : "false")
       );
     })
     .catch((error) => {
@@ -449,8 +578,18 @@ function sendApp(req, res) {
     });
 }
 
+// Primary experience: the sequential Legend showcase (welcome -> quiz -> omen -> ...).
+function sendApp(req, res) {
+  sendHtmlFile(path.join("legend", "index.html"), res);
+}
+
+// Secondary tool: the Quest Builder admin UI, demoted to /builder.
+function sendBuilder(req, res) {
+  sendHtmlFile("index.html", res);
+}
+
 router.get("/healthz", (req, res) => {
-  res.json({ ok: true, basePath: BASE_PATH || "/", authRequired: Boolean(AUTH_PASSWORD), storage: objectStorage.mode(), quests: questStore.mode(), grader: graderTier() });
+  res.json({ ok: true, basePath: BASE_PATH || "/", authRequired: AUTH_REQUIRED, authMode: AUTH_MODE, storage: objectStorage.mode(), quests: questStore.mode(), grader: graderTier() });
 });
 
 router.get("/api/side-quests", requireUser, async (req, res, next) => {
@@ -511,7 +650,7 @@ router.get("/api/progress", requireUser, async (req, res, next) => {
 
 router.post("/api/side-quests/pick", requireUser, async (req, res, next) => {
   try {
-    await questStore.recordPick(req.body?.slug, req.body?.surface === "desktop" ? "desktop" : "web");
+    await questStore.recordPick(req.body?.slug, req.body?.surface === "desktop" ? "desktop" : "web", req.user?.id || null);
     res.json({ ok: true });
   } catch (error) {
     next(error);
@@ -526,7 +665,28 @@ router.get("/api/analytics", requireUser, async (req, res, next) => {
   }
 });
 
-router.post("/api/login", (req, res) => {
+router.post("/api/login", async (req, res, next) => {
+  if (authStore.enabled()) {
+    const email = safeText(req.body?.email).toLowerCase();
+    const password = String(req.body?.password || "");
+    if (!email || !password) {
+      res.status(400).json({ error: "missing_credentials" });
+      return;
+    }
+    try {
+      const { session, user } = await authStore.signInWithPassword({ email, password });
+      if (!session) {
+        res.status(401).json({ error: "no_session" });
+        return;
+      }
+      setSbCookie(res, session);
+      res.json({ ok: true, user });
+    } catch (error) {
+      res.status(401).json({ error: "invalid_login", message: error.message });
+    }
+    return;
+  }
+
   if (!AUTH_PASSWORD || req.body?.password === AUTH_PASSWORD) {
     setSessionCookie(res, AUTH_USER);
     res.json({ ok: true, user: { id: AUTH_USER, name: AUTH_USER } });
@@ -536,21 +696,90 @@ router.post("/api/login", (req, res) => {
   res.status(401).json({ error: "bad_password" });
 });
 
+router.post("/api/signup", async (req, res) => {
+  if (!authStore.enabled()) {
+    res.status(400).json({ error: "signup_unavailable" });
+    return;
+  }
+  const email = safeText(req.body?.email).toLowerCase();
+  const password = String(req.body?.password || "");
+  if (!email || password.length < 6) {
+    res.status(400).json({ error: "weak_credentials", message: "Email and a 6+ character password are required." });
+    return;
+  }
+  try {
+    const { session, user } = await authStore.signUp({ email, password, redirectTo: callbackUrl(req) });
+    if (session) {
+      setSbCookie(res, session);
+      res.json({ ok: true, authenticated: true, user });
+      return;
+    }
+    res.json({ ok: true, authenticated: false, needsConfirmation: true, user });
+  } catch (error) {
+    res.status(400).json({ error: "signup_failed", message: error.message });
+  }
+});
+
 router.post("/api/logout", (req, res) => {
   clearSessionCookie(res);
   res.json({ ok: true });
 });
 
-router.get("/api/me", (req, res) => {
-  const user = currentUser(req);
-  res.json({
-    authenticated: Boolean(user),
-    authRequired: Boolean(AUTH_PASSWORD),
-    user
-  });
+router.get("/api/me", async (req, res, next) => {
+  try {
+    const user = await resolveUser(req, res);
+    res.json({
+      authenticated: Boolean(user),
+      authRequired: AUTH_REQUIRED,
+      authMode: AUTH_MODE,
+      googleEnabled: authStore.googleEnabled(),
+      user
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
-router.get("/api/quests", requireUser, async (req, res, next) => {
+router.get("/auth/google", async (req, res) => {
+  if (!authStore.googleEnabled()) {
+    res.status(404).json({ error: "google_oauth_disabled" });
+    return;
+  }
+  try {
+    const { url, bundle } = await authStore.oauthStart({ redirectTo: callbackUrl(req) });
+    setPkceCookie(res, bundle);
+    res.redirect(302, url);
+  } catch (error) {
+    res.status(500).json({ error: "oauth_start_failed", message: error.message });
+  }
+});
+
+router.get("/auth/callback", async (req, res) => {
+  const home = `${BASE_PATH || ""}/`;
+  const code = req.query.code;
+  if (req.query.error) {
+    res.redirect(302, `${home}?auth_error=${encodeURIComponent(String(req.query.error_description || req.query.error))}`);
+    return;
+  }
+  if (!code) {
+    res.redirect(302, `${home}?auth_error=missing_code`);
+    return;
+  }
+  try {
+    const cookies = parseCookies(req.headers.cookie);
+    const rawBundle = cookies[SB_PKCE_COOKIE];
+    const bundle = rawBundle ? Buffer.from(rawBundle, "base64url").toString("utf8") : null;
+    const { session } = await authStore.exchangeCode({ code: String(code), bundle });
+    clearPkceCookie(res);
+    if (session) setSbCookie(res, session);
+    res.redirect(302, home);
+  } catch (error) {
+    clearPkceCookie(res);
+    res.redirect(302, `${home}?auth_error=${encodeURIComponent(error.message || "exchange_failed")}`);
+  }
+});
+
+router.get("/api/quests", allowGuest, async (req, res, next) => {
   try {
     const jobs = await listJobs();
     res.json({ jobs: jobs.map(compactJob) });
@@ -559,7 +788,7 @@ router.get("/api/quests", requireUser, async (req, res, next) => {
   }
 });
 
-router.get("/api/quests/:id", requireUser, async (req, res, next) => {
+router.get("/api/quests/:id", allowGuest, async (req, res, next) => {
   try {
     const job = await readJob(req.params.id);
     res.json({ job: compactJob(job) });
@@ -568,7 +797,7 @@ router.get("/api/quests/:id", requireUser, async (req, res, next) => {
   }
 });
 
-router.get("/api/storage", requireUser, async (req, res, next) => {
+router.get("/api/storage", allowGuest, async (req, res, next) => {
   try {
     await objectStorage.streamObject(req.query.key, res);
   } catch (error) {
@@ -576,7 +805,7 @@ router.get("/api/storage", requireUser, async (req, res, next) => {
   }
 });
 
-router.post("/api/quests", requireUser, upload.array("videos", 24), async (req, res, next) => {
+router.post("/api/quests", allowGuest, upload.array("videos", 24), async (req, res, next) => {
   try {
     const id = crypto.randomUUID();
     const { uploads, duplicates } = await ingestUploads(id, req.files);
@@ -622,7 +851,7 @@ router.post("/api/quests", requireUser, upload.array("videos", 24), async (req, 
     job.storageMode = objectStorage.mode();
 
     await writeJob(job);
-    if (questSlug) questStore.recordPick(questSlug, "web").catch(() => {});
+    if (questSlug) questStore.recordPick(questSlug, "web", req.user?.id || null).catch(() => {});
     res.status(202).json({ job: compactJob(job) });
     setImmediate(() => runJob(id));
   } catch (error) {
@@ -633,8 +862,13 @@ router.post("/api/quests", requireUser, upload.array("videos", 24), async (req, 
 router.use("/assets", express.static(PUBLIC_ROOT, { immutable: false, maxAge: "1m" }));
 router.use("/outputs", express.static(RUNS_ROOT, { fallthrough: false }));
 router.get("/", sendApp);
+router.get("/builder", sendBuilder);
 router.use((req, res, next) => {
   if (req.method === "GET" && !req.path.startsWith("/api/") && !req.path.startsWith("/outputs/") && !req.path.startsWith("/assets/")) {
+    if (req.path === "/builder" || req.path.startsWith("/builder/")) {
+      sendBuilder(req, res);
+      return;
+    }
     sendApp(req, res);
     return;
   }

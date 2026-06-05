@@ -6,9 +6,43 @@
  * falls back to the committed data/side-quests.json so the app works offline.
  */
 const fs = require("node:fs");
+const fsp = require("node:fs/promises");
 const path = require("node:path");
 
 const JSON_PATH = path.resolve(__dirname, "..", "..", "..", "data", "side-quests.json");
+
+// Local persistence (used only when Supabase is NOT configured) so the
+// completion → progress feedback loop works offline. Mirror server.js's
+// data-dir resolution.
+function progressFilePath() {
+  const dir = path.resolve(process.env.LEGEND_DATA_DIR || path.join(process.cwd(), "web-data"));
+  return path.join(dir, "progress.json");
+}
+
+async function readLocalProgress() {
+  try {
+    const raw = await fsp.readFile(progressFilePath(), "utf8");
+    const data = JSON.parse(raw);
+    return {
+      completions: Array.isArray(data.completions) ? data.completions : [],
+      picks: Array.isArray(data.picks) ? data.picks : []
+    };
+  } catch {
+    return { completions: [], picks: [] };
+  }
+}
+
+async function writeLocalProgress(mutate) {
+  const file = progressFilePath();
+  const store = await readLocalProgress();
+  mutate(store);
+  try {
+    await fsp.mkdir(path.dirname(file), { recursive: true });
+    await fsp.writeFile(file, JSON.stringify(store, null, 2));
+  } catch {
+    // best-effort; ignore write failures
+  }
+}
 
 let cache = null;
 let supabase = null;
@@ -150,11 +184,31 @@ function facets() {
   };
 }
 
-async function recordPick(slug, surface = "web") {
+async function insertWithOptionalUser(table, base, userId) {
   const client = supabaseClient();
-  if (!client || !slug) return;
+  if (!client) return;
+  if (userId) {
+    const { error } = await client.from(table).insert({ ...base, user_id: userId });
+    if (!error) return;
+    // Column may not exist yet (migration 0002 not applied); retry without it.
+  }
+  await client.from(table).insert(base);
+}
+
+async function recordPick(slug, surface = "web", userId = null) {
+  if (!slug) return;
+  if (!supabaseClient()) {
+    await writeLocalProgress((store) => {
+      store.picks.push({
+        quest_slug: slug,
+        surface: surface === "desktop" ? "desktop" : "web",
+        created_at: new Date().toISOString()
+      });
+    });
+    return;
+  }
   try {
-    await client.from("quest_picks").insert({ quest_slug: slug, surface });
+    await insertWithOptionalUser("quest_picks", { quest_slug: slug, surface }, userId);
   } catch {
     // best-effort analytics; ignore failures
   }
@@ -186,17 +240,33 @@ function levelForXp(xp) {
   return 1 + Math.floor(Math.max(0, xp) / XP_PER_LEVEL);
 }
 
-async function recordCompletion({ slug, jobId, gradeScore, xpEarned, surface = "web" } = {}) {
-  const client = supabaseClient();
-  if (!client || !slug) return;
-  try {
-    await client.from("quest_completions").insert({
-      quest_slug: slug,
-      job_id: jobId || null,
-      grade_score: gradeScore == null ? null : Number(gradeScore),
-      xp_earned: Math.max(0, Number(xpEarned) || 0),
-      surface: surface === "desktop" ? "desktop" : "web"
+async function recordCompletion({ slug, jobId, gradeScore, xpEarned, surface = "web", userId = null } = {}) {
+  if (!slug) return;
+  if (!supabaseClient()) {
+    await writeLocalProgress((store) => {
+      store.completions.push({
+        quest_slug: slug,
+        job_id: jobId || null,
+        grade_score: gradeScore == null ? null : Number(gradeScore),
+        xp_earned: Math.max(0, Number(xpEarned) || 0),
+        surface: surface === "desktop" ? "desktop" : "web",
+        created_at: new Date().toISOString()
+      });
     });
+    return;
+  }
+  try {
+    await insertWithOptionalUser(
+      "quest_completions",
+      {
+        quest_slug: slug,
+        job_id: jobId || null,
+        grade_score: gradeScore == null ? null : Number(gradeScore),
+        xp_earned: Math.max(0, Number(xpEarned) || 0),
+        surface: surface === "desktop" ? "desktop" : "web"
+      },
+      userId
+    );
   } catch {
     // best-effort; ignore
   }
@@ -214,9 +284,57 @@ const EMPTY_PROGRESS = () => ({
   source: "local-json"
 });
 
+/**
+ * Aggregate a list of completion rows (newest-first) into the progress shape.
+ * Rows must have: quest_slug, grade_score, xp_earned. Shared by Supabase and
+ * local-json paths so both produce identical output.
+ */
+function aggregateProgress(rows, pool, sourceLabel) {
+  const bySlug = new Map(pool.map((q) => [q.slug, q]));
+  const progress = EMPTY_PROGRESS();
+  progress.source = sourceLabel;
+  const completed = new Set();
+  const gradeSumByCategory = {};
+  const gradeCountByCategory = {};
+
+  rows.forEach((row, index) => {
+    progress.earnedXp += Math.max(0, Number(row.xp_earned) || 0);
+    completed.add(row.quest_slug);
+    const grade = row.grade_score == null ? null : Number(row.grade_score);
+    if (grade != null) {
+      const prev = progress.bestGradeBySlug[row.quest_slug];
+      if (prev == null || grade > prev) progress.bestGradeBySlug[row.quest_slug] = grade;
+    }
+    const quest = bySlug.get(row.quest_slug);
+    if (quest) {
+      progress.countByCategory[quest.category] = (progress.countByCategory[quest.category] || 0) + 1;
+      progress.countByDifficulty[quest.difficulty] = (progress.countByDifficulty[quest.difficulty] || 0) + 1;
+      if (grade != null) {
+        gradeSumByCategory[quest.category] = (gradeSumByCategory[quest.category] || 0) + grade;
+        gradeCountByCategory[quest.category] = (gradeCountByCategory[quest.category] || 0) + 1;
+      }
+      if (index === 0) progress.recentCategory = quest.category;
+    }
+  });
+
+  for (const cat of Object.keys(gradeSumByCategory)) {
+    progress.avgGradeByCategory[cat] = gradeSumByCategory[cat] / gradeCountByCategory[cat];
+  }
+  progress.completedSlugs = [...completed];
+  progress.level = levelForXp(progress.earnedXp);
+  return progress;
+}
+
 async function getProgress() {
   const client = supabaseClient();
-  if (!client) return EMPTY_PROGRESS();
+  if (!client) {
+    const { completions } = await readLocalProgress();
+    const rows = completions
+      .slice()
+      .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+    const pool = await fetchPool();
+    return aggregateProgress(rows, pool, "local-json");
+  }
 
   try {
     const { data, error } = await client
@@ -228,40 +346,7 @@ async function getProgress() {
 
     const rows = data || [];
     const pool = await fetchPool();
-    const bySlug = new Map(pool.map((q) => [q.slug, q]));
-
-    const progress = EMPTY_PROGRESS();
-    progress.source = "supabase";
-    const completed = new Set();
-    const gradeSumByCategory = {};
-    const gradeCountByCategory = {};
-
-    rows.forEach((row, index) => {
-      progress.earnedXp += Math.max(0, Number(row.xp_earned) || 0);
-      completed.add(row.quest_slug);
-      const grade = row.grade_score == null ? null : Number(row.grade_score);
-      if (grade != null) {
-        const prev = progress.bestGradeBySlug[row.quest_slug];
-        if (prev == null || grade > prev) progress.bestGradeBySlug[row.quest_slug] = grade;
-      }
-      const quest = bySlug.get(row.quest_slug);
-      if (quest) {
-        progress.countByCategory[quest.category] = (progress.countByCategory[quest.category] || 0) + 1;
-        progress.countByDifficulty[quest.difficulty] = (progress.countByDifficulty[quest.difficulty] || 0) + 1;
-        if (grade != null) {
-          gradeSumByCategory[quest.category] = (gradeSumByCategory[quest.category] || 0) + grade;
-          gradeCountByCategory[quest.category] = (gradeCountByCategory[quest.category] || 0) + 1;
-        }
-        if (index === 0) progress.recentCategory = quest.category;
-      }
-    });
-
-    for (const cat of Object.keys(gradeSumByCategory)) {
-      progress.avgGradeByCategory[cat] = gradeSumByCategory[cat] / gradeCountByCategory[cat];
-    }
-    progress.completedSlugs = [...completed];
-    progress.level = levelForXp(progress.earnedXp);
-    return progress;
+    return aggregateProgress(rows, pool, "supabase");
   } catch {
     return EMPTY_PROGRESS();
   }
@@ -269,7 +354,12 @@ async function getProgress() {
 
 async function pickCounts() {
   const client = supabaseClient();
-  if (!client) return {};
+  if (!client) {
+    const { picks } = await readLocalProgress();
+    const counts = {};
+    for (const row of picks) counts[row.quest_slug] = (counts[row.quest_slug] || 0) + 1;
+    return counts;
+  }
   try {
     const { data, error } = await client.from("quest_picks").select("quest_slug").limit(10000);
     if (error) throw error;

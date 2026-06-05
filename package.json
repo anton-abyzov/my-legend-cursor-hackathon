@@ -7,6 +7,7 @@
   "scripts": {
     "start": "electron .",
     "web": "node src/web/server.js",
+    "test:e2e": "playwright test",
     "build:quests": "node scripts/buildSideQuests.js",
     "seed:supabase": "node scripts/seedSupabase.js",
     "doctor": "npx --yes hyperframes@0.6.70 doctor",
@@ -16,6 +17,7 @@
     "node": ">=22"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "electron": "^42.3.3"
   },
   "dependencies": {

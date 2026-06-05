@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Legend</title>
+<base href="%BASE_PATH%/assets/legend/" />
+<script>
+  // Bridge server config to the in-browser app (base path + auth state).
+  window.LEGEND_CFG = {
+    basePath: "%BASE_PATH%",
+    authRequired: %AUTH_REQUIRED%,
+    authMode: "%AUTH_MODE%",
+    googleEnabled: %GOOGLE_ENABLED%
+  };
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Black+Ops+One&family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: #0e1018; min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    color: #fff;
+  }
+
+  /* ── screen shell ── */
+  .ly-screen { min-height: 100%; position: relative; background: var(--bg); color: var(--ink); font-family: var(--body); overflow: hidden; }
+  .ly-screen::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 320px; background: radial-gradient(120% 80% at 50% -20%, color-mix(in oklab, var(--primary), transparent 80%), transparent 70%); pointer-events: none; z-index: 0; }
+
+  /* starfield */
+  .ly-stars { position: absolute; inset: -25% -25%; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cg fill='white'%3E%3Ccircle cx='14' cy='30' r='1'/%3E%3Ccircle cx='60' cy='12' r='.7'/%3E%3Ccircle cx='110' cy='44' r='1.2'/%3E%3Ccircle cx='168' cy='20' r='.8'/%3E%3Ccircle cx='200' cy='70' r='1'/%3E%3Ccircle cx='36' cy='84' r='.7'/%3E%3Ccircle cx='88' cy='100' r='1'/%3E%3Ccircle cx='140' cy='120' r='.7'/%3E%3Ccircle cx='190' cy='140' r='1.1'/%3E%3Ccircle cx='20' cy='150' r='.9'/%3E%3Ccircle cx='66' cy='168' r='.7'/%3E%3Ccircle cx='120' cy='188' r='1'/%3E%3Ccircle cx='160' cy='200' r='.8'/%3E%3Ccircle cx='208' cy='178' r='.7'/%3E%3Ccircle cx='44' cy='208' r='1'/%3E%3Ccircle cx='96' cy='56' r='.6'/%3E%3Ccircle cx='150' cy='76' r='.6'/%3E%3C/g%3E%3C/svg%3E"); }
+  .ly-stars-a { background-size: 220px 220px; animation: ly-drift 70s linear infinite; }
+  .ly-stars-b { background-size: 320px 320px; animation: ly-drift 120s linear infinite; }
+
+  /* painterly ink-cloud blobs */
+  .ly-blob { position: absolute; border-radius: 48% 52% 60% 40% / 55% 45% 58% 42%; filter: blur(52px); }
+
+  /* ── type ── */
+  .ly-logo { display: block; width: min(76%, 312px); height: auto; filter: drop-shadow(0 0 24px var(--glow)); }
+  .ly-logo-sm { display: block; height: 22px; width: auto; }
+  .ly-wordmark { font-family: var(--display); font-weight: 400; font-size: calc(94px * var(--d-scale)); line-height: 0.84; color: #fff; letter-spacing: 0.02em; text-shadow: -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000, 0 0 36px var(--glow); }
+  .ly-display { font-family: var(--display); font-weight: 400; font-size: calc(52px * var(--d-scale)); line-height: 0.9; letter-spacing: 0.015em; color: #fff; margin: 0; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 0 30px var(--glow); text-wrap: balance; }
+  .ly-h1 { font-family: var(--heading); font-weight: 400; font-size: calc(36px * var(--d-scale)); line-height: 1.0; letter-spacing: 0.022em; text-transform: uppercase; color: var(--ink); margin: 0; text-wrap: balance; white-space: pre-line; }
+  .ly-eyebrow { font-family: var(--mono); font-size: 10.5px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink-soft); display: inline-flex; align-items: center; gap: 8px; margin: 0; }
+  .ly-tick { width: 14px; height: 2px; background: var(--primary); display: inline-block; box-shadow: 0 0 8px var(--glow); flex-shrink: 0; }
+  .ly-note { font-family: var(--body); font-size: 14.5px; line-height: 1.55; color: var(--ink-soft); margin: 10px 0 0; max-width: 320px; }
+  .ly-essence { font-family: var(--body); font-size: 17px; line-height: 1.5; color: var(--ink); margin: 0; }
+  .ly-num { font-family: var(--mono); font-size: 12px; font-weight: 700; letter-spacing: 0.08em; color: var(--ink-faint); }
+
+  /* ── buttons ── */
+  .ly-btn { font-family: var(--body); font-weight: 700; font-size: 14.5px; text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; border: none; border-radius: 11px; padding: 16px 22px; cursor: pointer; transition: transform .12s ease, box-shadow .25s ease, background .2s, opacity .2s; display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
+  .ly-btn-cta { background: var(--highlight); color: #000; box-shadow: 0 6px 24px color-mix(in oklab, var(--highlight), transparent 58%); }
+  .ly-btn-cta:active { transform: translateY(1px) scale(.99); }
+  .ly-btn-white { background: #fff; color: #000; }
+  .ly-btn-ghost { background: transparent; color: var(--ink); border: 1.5px solid var(--line-strong); }
+  .ly-btn-ghost:active { transform: translateY(1px) scale(.99); }
+  .ly-btn.is-disabled, .ly-btn:disabled { opacity: .34; cursor: default; box-shadow: none; }
+  .ly-btn-arrow { font-size: 15px; transition: transform .2s; }
+  .ly-btn:hover .ly-btn-arrow { transform: translateX(3px); }
+  .ly-link { background: none; border: none; font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--ink-soft); cursor: pointer; padding: 8px; transition: color .2s; }
+  .ly-link:hover { color: var(--ink); }
+  .ly-icon-btn { width: 34px; height: 34px; border-radius: 50%; border: 1.5px solid var(--line-strong); background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
+
+  /* ── inputs / options ── */
+  .ly-field { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 16px 18px; }
+  .ly-field-caret { font-family: var(--mono); color: var(--primary); font-size: 17px; }
+  .ly-input { flex: 1; font-family: var(--body); font-size: 18px; background: transparent; border: none; color: var(--ink); outline: none; width: 100%; }
+  .ly-input::placeholder { color: var(--ink-faint); }
+  .ly-slider { width: 100%; height: 6px; accent-color: var(--primary); cursor: pointer; }
+  .ly-option { display: flex; align-items: center; font-family: var(--body); font-size: 16px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; cursor: pointer; transition: all .18s ease; text-align: left; }
+  .ly-option:hover { border-color: var(--line-strong); background: var(--surface-alt); }
+  .ly-option.is-sel { border-color: var(--primary); background: var(--surface-alt); box-shadow: inset 0 0 0 1px var(--primary), 0 0 20px color-mix(in oklab, var(--glow), transparent 40%); }
+  .ly-option.is-sel .ly-num { color: var(--primary); }
+  .ly-radio { width: 24px; height: 24px; border-radius: 50%; border: 1.6px solid var(--line-strong); display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all .18s; }
+  .ly-radio.is-sel { background: var(--primary); border-color: var(--primary); }
+  .ly-binary { flex: 1; display: flex; align-items: center; justify-content: center; font-family: var(--heading); font-weight: 400; text-transform: uppercase; letter-spacing: 0.03em; font-size: 32px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 36px 18px; cursor: pointer; transition: all .18s ease; }
+  .ly-binary:hover { border-color: var(--line-strong); background: var(--surface-alt); }
+  .ly-binary.is-sel { border-color: var(--primary); background: var(--surface-alt); color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary), 0 0 22px color-mix(in oklab, var(--glow), transparent 40%); }
+
+  .ly-tag { display: inline-flex; align-items: center; font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-soft); background: var(--surface); border: 1px solid var(--line); border-radius: 9999px; padding: 7px 13px; }
+  .ly-tag.is-active { background: var(--highlight); color: #000; border-color: transparent; }
+
+  .ly-ritual { display: flex; align-items: center; gap: 13px; font-family: var(--body); font-size: 15.5px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; cursor: pointer; text-align: left; transition: all .18s; }
+  .ly-ritual.is-done { color: var(--ink-faint); background: transparent; }
+  .ly-ritual.is-done span:last-child { text-decoration: line-through; text-decoration-color: var(--ink-faint); }
+
+  .ly-quote { margin-top: 26px; padding-top: 20px; border-top: 1px solid var(--line); font-family: var(--body); font-size: 17px; line-height: 1.45; color: var(--ink); display: flex; flex-direction: column; }
+
+  /* ── glows / seal ── */
+  .ly-glow { position: absolute; width: 230px; height: 230px; border-radius: 50%; background: radial-gradient(circle, var(--glow), transparent 66%); filter: blur(10px); }
+  .ly-seal { width: 106px; height: 106px; border-radius: 50%; border: 2px solid var(--primary); display: flex; align-items: center; justify-content: center; position: relative; background: var(--surface-solid); box-shadow: 0 0 0 7px color-mix(in oklab, var(--glow), transparent 80%), 0 0 44px var(--glow); }
+
+  /* ── share collectible card ── */
+  .ly-share-card { position: relative; background: linear-gradient(165deg, #232845, #141829 72%); border-radius: 18px; padding: 22px; width: 100%; aspect-ratio: 9 / 13.2; overflow: hidden; box-shadow: inset 0 0 0 1.5px var(--primary), 0 24px 56px rgba(0,0,0,0.6), 0 0 50px color-mix(in oklab, var(--glow), transparent 52%); }
+  .ly-share-card::after { content: ''; position: absolute; inset: 9px; border: 1px solid var(--line-strong); border-radius: 12px; pointer-events: none; z-index: 3; }
+  .ly-share-holo { position: absolute; inset: 0; z-index: 1; background: linear-gradient(125deg, transparent 32%, color-mix(in oklab, var(--secondary), transparent 78%) 46%, transparent 58%); mix-blend-mode: screen; pointer-events: none; }
+  .ly-share-media { position: relative; flex: 1; min-height: 0; margin: 14px 0; border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.03); border: 1px solid var(--line); }
+  .ly-share-media img, .ly-share-media video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .ly-share-media-tag { position: absolute; left: 12px; bottom: 12px; z-index: 2; font-family: var(--mono); font-size: 9.5px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: #fff; background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 9999px; }
+
+  /* ── proof upload ── */
+  .ly-upload { position: relative; height: 300px; border-radius: 16px; border: 1.5px dashed var(--line-strong); background: var(--surface); display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden; transition: border-color .2s, box-shadow .2s; }
+  .ly-upload:hover { border-color: var(--primary); }
+  .ly-upload.has-img { border-style: solid; border-color: var(--primary); box-shadow: 0 0 26px color-mix(in oklab, var(--glow), transparent 55%); }
+  .ly-upload img, .ly-upload > video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .ly-upload-plus { font-family: var(--body); font-weight: 300; font-size: 54px; line-height: 1; color: var(--primary); }
+  .ly-upload-redo { position: absolute; left: 0; right: 0; bottom: 0; padding: 12px; text-align: center; background: linear-gradient(to top, rgba(0,0,0,0.72), transparent); }
+  .ly-upload-redo .ly-num { color: #fff; }
+  .ly-proof-grid { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; padding: 6px; overflow-y: auto; align-content: start; }
+  .ly-proof-cell { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; background: rgba(0,0,0,0.2); }
+  .ly-proof-thumb { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .ly-polaroid { position: relative; width: 196px; padding: 12px 12px 16px; background: #f5f2ea; border-radius: 4px; transform: rotate(-3deg); box-shadow: 0 18px 44px rgba(0,0,0,0.55); }
+  .ly-polaroid img, .ly-polaroid video { width: 100%; height: 196px; object-fit: cover; border-radius: 2px; display: block; }
+  .ly-polaroid-badge { position: absolute; top: -14px; right: -14px; width: 42px; height: 42px; border-radius: 50%; background: var(--surface-solid); border: 1.5px solid var(--primary); display: flex; align-items: center; justify-content: center; box-shadow: 0 0 18px var(--glow); }
+
+  /* ── video proof upload ── */
+  .ly-upload-video { height: 240px; }
+  .ly-upload-clap { font-size: 46px; line-height: 1; filter: drop-shadow(0 0 16px var(--glow)); }
+  .ly-upload video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #000; }
+  .ly-upload-scrim { position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.7) 4%, transparent 46%); pointer-events: none; }
+  .ly-clip-row { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 11px 14px; }
+  .ly-clip-row .ly-clip-ix { width: 30px; height: 30px; border-radius: 8px; background: var(--surface-alt); border: 1px solid var(--line-strong); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .ly-clip-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--body); font-size: 14px; color: var(--ink); }
+
+  /* ── cooking / render progress ── */
+  .ly-cook-orb { position: relative; width: 120px; height: 120px; display: flex; align-items: center; justify-content: center; }
+  .ly-cook-ring { position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--line-strong); }
+  .ly-cook-ring.is-spin { border-top-color: var(--primary); border-right-color: var(--primary); animation: ly-spin-fast 1.1s linear infinite; }
+  @keyframes ly-spin-fast { to { transform: rotate(360deg); } }
+  .ly-cook-pct { font-family: var(--heading); font-weight: 400; font-size: 40px; line-height: 1; color: var(--ink); text-shadow: 0 0 18px var(--glow); }
+  .ly-bar { position: relative; height: 12px; border-radius: 9999px; background: var(--surface-alt); border: 1px solid var(--line); overflow: hidden; }
+  .ly-bar-fill { position: absolute; inset: 0 auto 0 0; border-radius: 9999px; background: linear-gradient(90deg, var(--primary), var(--highlight)); box-shadow: 0 0 18px var(--glow); transition: width .6s cubic-bezier(.4,0,.2,1); }
+  .ly-bar-shine { position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.45), transparent); width: 38%; animation: ly-shine 1.8s linear infinite; }
+  @keyframes ly-shine { from { transform: translateX(-120%); } to { transform: translateX(360%); } }
+  .ly-log { background: #0a0c14; border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; font-family: var(--mono); font-size: 11.5px; line-height: 1.65; color: var(--ink-soft); height: 168px; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; }
+  .ly-log-line { white-space: pre-wrap; word-break: break-word; opacity: 0.55; }
+  .ly-log-line:last-child { opacity: 1; color: var(--ink); }
+  .ly-log-line::before { content: '› '; color: var(--primary); }
+  .ly-stage-row { display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; }
+  .ly-stage-dot { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--line-strong); flex-shrink: 0; }
+  .ly-stage-dot.is-active { background: var(--primary); border-color: var(--primary); box-shadow: 0 0 10px var(--glow); animation: ly-pulse 1.2s ease-in-out infinite; }
+  .ly-stage-dot.is-done { background: var(--highlight); border-color: var(--highlight); }
+  @keyframes ly-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+  /* ── AI verification / grade ── */
+  .ly-verify-video { width: 100%; border-radius: 14px; overflow: hidden; border: 1px solid var(--line-strong); background: #000; display: block; box-shadow: 0 0 30px color-mix(in oklab, var(--glow), transparent 60%); }
+  .ly-grade { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 20px; box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--primary), transparent 86%); }
+  .ly-grade-head { display: flex; align-items: center; gap: 16px; }
+  .ly-grade-score { font-family: var(--heading); font-weight: 400; font-size: 62px; line-height: 0.82; color: var(--primary); text-shadow: 0 0 22px var(--glow); }
+  .ly-grade-score sub { font-family: var(--mono); font-size: 14px; font-weight: 700; color: var(--ink-faint); vertical-align: baseline; }
+  .ly-grade-verdict { font-family: var(--heading); font-weight: 400; text-transform: uppercase; font-size: 24px; letter-spacing: 0.02em; color: var(--ink); line-height: 1; }
+  .ly-gradebar { display: grid; grid-template-columns: 96px 1fr 30px; align-items: center; gap: 10px; }
+  .ly-gradebar-label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); }
+  .ly-gradebar-track { height: 8px; border-radius: 9999px; background: var(--surface-alt); overflow: hidden; }
+  .ly-gradebar-fill { height: 100%; border-radius: 9999px; background: linear-gradient(90deg, var(--secondary), var(--primary)); box-shadow: 0 0 12px var(--glow); transition: width .9s cubic-bezier(.4,0,.2,1); }
+  .ly-gradebar-val { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--ink); text-align: right; }
+  .ly-gap { display: flex; gap: 9px; font-family: var(--body); font-size: 13.5px; line-height: 1.45; color: var(--ink-soft); }
+  .ly-gap::before { content: '△'; color: var(--highlight); flex-shrink: 0; }
+
+  /* ── journal ── */
+  .ly-stat { flex: 1; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 17px 18px; display: flex; flex-direction: column; gap: 7px; }
+  .ly-stat-n { font-family: var(--heading); font-weight: 400; font-size: 50px; line-height: 0.82; letter-spacing: 0.01em; color: var(--primary); text-shadow: 0 0 18px var(--glow); }
+  .ly-timeline { margin-top: 14px; display: flex; flex-direction: column; }
+  .ly-node { display: flex; gap: 15px; position: relative; padding-bottom: 14px; }
+  .ly-node:not(:last-child)::before { content: ''; position: absolute; left: 17px; top: 32px; bottom: -2px; border-left: 1.5px dashed var(--line-strong); }
+  .ly-node-dot { width: 35px; height: 35px; border-radius: 50%; flex-shrink: 0; background: var(--surface-solid); border: 1.5px solid var(--line-strong); display: flex; align-items: center; justify-content: center; z-index: 1; }
+  .ly-node-dot.is-active { background: var(--primary); border-color: var(--primary); box-shadow: 0 0 16px var(--glow); }
+  .ly-node-card { flex: 1; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px 16px; }
+  .ly-node-card.is-active { border-color: var(--primary); }
+  .ly-node-title { font-family: var(--heading); font-weight: 400; text-transform: uppercase; font-size: 18px; letter-spacing: 0.022em; color: var(--ink); margin-top: 4px; line-height: 1.0; }
+  .ly-dock { position: sticky; bottom: 0; margin: 10px -22px -38px; padding: 14px 22px 38px; background: linear-gradient(to top, var(--bg) 62%, transparent); }
+
+  /* ── die ── */
+  .ly-die { width: 112px; height: 112px; position: relative; transform-style: preserve-3d; }
+  .ly-die-idle { transition: transform 2s cubic-bezier(.2,.7,.2,1); }
+  .ly-die-rolling { transition: transform 1.75s cubic-bezier(.16,.7,.22,1); }
+  .ly-die-face { position: absolute; width: 112px; height: 112px; border-radius: 18px; background: linear-gradient(150deg, #2a3050, #161a2c); box-shadow: inset 0 0 0 1px var(--line-strong), inset 0 4px 12px rgba(255,255,255,0.05), inset 0 -10px 20px rgba(0,0,0,0.4), 0 0 30px color-mix(in oklab, var(--glow), transparent 62%); }
+  .ly-die-landed .ly-die-face { box-shadow: inset 0 0 0 1px var(--primary), inset 0 4px 12px rgba(255,255,255,0.06), inset 0 -10px 20px rgba(0,0,0,0.4), 0 0 46px color-mix(in oklab, var(--glow), transparent 38%); }
+  .ly-die-flash { position: absolute; width: 152px; height: 152px; border-radius: 26px; background: radial-gradient(circle, var(--glow), transparent 70%); filter: blur(14px); animation: ly-fade .4s ease; z-index: 0; }
+
+  /* ── card flip ── */
+  .ly-card-flip { width: 116px; height: 168px; }
+  .ly-card-inner { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; transition: transform .8s cubic-bezier(.4,0,.2,1); }
+  .ly-card-side { position: absolute; inset: 0; -webkit-backface-visibility: hidden; backface-visibility: hidden; border-radius: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 16px 34px rgba(0,0,0,0.5); }
+  .ly-card-back { background: linear-gradient(160deg, var(--card-bg), var(--card-bg2)); box-shadow: inset 0 0 0 1px var(--line-strong), 0 16px 34px rgba(0,0,0,0.5), 0 0 26px color-mix(in oklab, var(--glow), transparent 56%); }
+  .ly-card-front { background: var(--surface-solid); transform: rotateY(180deg); box-shadow: inset 0 0 0 1px var(--primary), 0 16px 34px rgba(0,0,0,0.5); }
+
+  /* ── phone orb ── */
+  .ly-ripple { position: absolute; width: 124px; height: 124px; border-radius: 50%; border: 1.5px solid var(--primary); opacity: 0; animation: ly-ripple 2.7s ease-out infinite; }
+  .ly-ripple-fast { animation-duration: 1.1s; border-color: var(--secondary); }
+  .ly-orb { width: 124px; height: 124px; border-radius: 50%; background: radial-gradient(circle at 38% 32%, color-mix(in oklab, var(--primary), #fff 26%), var(--primary)); display: flex; align-items: center; justify-content: center; box-shadow: 0 0 46px var(--glow); transition: all .5s; z-index: 2; }
+  .ly-orb-on { box-shadow: 0 0 82px var(--glow), 0 0 0 9px color-mix(in oklab, var(--secondary), transparent 76%); background: radial-gradient(circle at 38% 32%, var(--secondary), var(--primary)); }
+
+  /* ── motion ── */
+  .ly-spin { animation: ly-spin 64s linear infinite; transform-origin: 50% 50%; }
+  .ly-float { animation: ly-float 4s ease-in-out infinite; }
+  .ly-mote { position: absolute; bottom: 90px; width: 5px; height: 5px; border-radius: 50%; background: var(--primary); box-shadow: 0 0 8px var(--glow); opacity: 0; animation: ly-mote 4.2s ease-in infinite; }
+  .ly-route { height: 100%; }
+  .ly-step-in { animation: ly-step .42s ease both; }
+  .ly-reveal-in { animation: ly-reveal .72s cubic-bezier(.2,.7,.2,1) both; }
+  .ly-fade-in { animation: ly-fade .5s ease both; }
+  @keyframes ly-spin { to { transform: rotate(360deg); } }
+  @keyframes ly-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+  @keyframes ly-drift { from { transform: translateY(0); } to { transform: translateY(-220px); } }
+  @keyframes ly-ripple { 0% { transform: scale(.5); opacity: .55; } 100% { transform: scale(1.7); opacity: 0; } }
+  @keyframes ly-mote { 0% { transform: translateY(0); opacity: 0; } 18% { opacity: .9; } 100% { transform: translateY(-440px); opacity: 0; } }
+  @keyframes ly-step { from { transform: translateY(10px); } to { transform: none; } }
+  @keyframes ly-reveal { from { transform: translateY(16px) scale(.985); } to { transform: none; } }
+  @keyframes ly-fade { from { transform: translateY(6px); } to { transform: none; } }
+
+  /* ════════════════════════════════════════════════════════════
+     LX — responsive landscape shell (desktop brand rail + framed
+     phone stage). Collapses to the exact mobile screens < 980px.
+     ════════════════════════════════════════════════════════════ */
+  .lx-app { position: relative; display: flex; min-height: 100dvh; background: var(--bg); }
+
+  /* desktop brand rail */
+  .lx-rail { position: relative; flex: 0 0 44%; max-width: 660px; min-width: 380px; overflow: hidden; display: flex; flex-direction: column; padding: 52px 56px; border-right: 1px solid var(--line); background: radial-gradient(125% 90% at 28% -8%, #2a2350 0%, #0e1018 68%); }
+  .lx-rail-bg { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+  .lx-rail-inner { position: relative; z-index: 2; flex: 1; display: flex; flex-direction: column; justify-content: space-between; gap: 28px; }
+  .lx-rail-top { display: flex; align-items: center; gap: 16px; }
+  .lx-rail-logo { height: 26px; width: auto; filter: drop-shadow(0 0 18px var(--glow)); }
+  .lx-rail-line { font-family: var(--display); font-weight: 400; font-size: clamp(52px, 6vw, 92px); line-height: 0.86; letter-spacing: 0.01em; color: #fff; margin: 16px 0 0; white-space: pre-line; text-shadow: 0 0 40px var(--glow); }
+  .lx-rail-sub { font-family: var(--body); font-size: 16px; line-height: 1.55; color: var(--ink-soft); margin: 18px 0 0; max-width: 360px; }
+  .lx-rail-eyebrow { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; color: var(--primary); display: inline-flex; align-items: center; gap: 9px; }
+
+  /* constellation progress */
+  .lx-constellation { display: flex; flex-direction: column; }
+  .lx-cnode { display: flex; align-items: center; gap: 15px; padding: 9px 0; position: relative; }
+  .lx-cnode:not(:last-child)::before { content: ''; position: absolute; left: 7px; top: 27px; bottom: -1px; border-left: 1.5px dashed var(--line-strong); }
+  .lx-cdot { width: 15px; height: 15px; border-radius: 50%; border: 1.6px solid var(--line-strong); background: #0e1018; flex-shrink: 0; z-index: 1; transition: all .4s ease; }
+  .lx-cdot.is-active { background: var(--primary); border-color: var(--primary); box-shadow: 0 0 16px var(--glow); }
+  .lx-cdot.is-done { background: var(--highlight); border-color: var(--highlight); box-shadow: 0 0 12px color-mix(in oklab, var(--highlight), transparent 55%); }
+  .lx-clabel { font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-faint); transition: color .3s; }
+  .lx-cnode.is-active .lx-clabel { color: var(--ink); }
+  .lx-cnode.is-done .lx-clabel { color: var(--ink-soft); }
+  .lx-rail-foot { font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-faint); }
+
+  /* phone stage */
+  .lx-stage { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; padding: 34px; }
+  .lx-card { position: relative; width: 100%; max-width: 432px; height: min(880px, calc(100dvh - 68px)); border-radius: 42px; overflow-y: auto; overflow-x: hidden; border: 1px solid var(--line-strong); background: var(--bg); box-shadow: 0 50px 100px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04), 0 0 90px color-mix(in oklab, var(--glow), transparent 72%); scrollbar-width: none; }
+  .lx-card::-webkit-scrollbar { display: none; }
+
+  /* mobile — collapse to the exact full-bleed phone screens */
+  @media (max-width: 979px) {
+    .lx-app { display: block; }
+    .lx-rail { display: none; }
+    .lx-stage { padding: 0; align-items: stretch; justify-content: stretch; min-height: 100dvh; }
+    .lx-card { max-width: none; width: 100vw; height: 100dvh; min-height: 100dvh; border: 0; border-radius: 0; box-shadow: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ly-spin, .ly-float, .ly-mote, .ly-ripple, .ly-stars-a, .ly-stars-b, .ly-step-in, .ly-reveal-in, .ly-fade-in { animation: none !important; }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="ly-warp">
+    <feTurbulence type="fractalNoise" baseFrequency="0.012 0.02" numOctaves="2" seed="7" result="n" />
+    <feDisplacementMap in="SourceGraphic" in2="n" scale="6" xChannelSelector="R" yChannelSelector="G" />
+  </filter>
+</svg>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="ios-frame.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="leyend-data.jsx"></script>
+<script type="text/babel" src="leyend-ui.jsx"></script>
+<script type="text/babel" src="leyend-trigger.jsx"></script>
+<script type="text/babel" src="leyend-screens.jsx"></script>
+
+<script type="text/babel">
+const STORE = 'leyend_v2';
+const DEFAULT_STATE = { screen: 'welcome', answers: {}, quest: null, active: null, done: [], completed: [], proof: null, jobId: null, job: null };
+
+// The showcase ALWAYS opens on the LEGEND welcome screen (slide 1), regardless
+// of any persisted progress — forward navigation through the flow still works.
+function loadState() {
+  try {
+    const s = JSON.parse(localStorage.getItem(STORE));
+    return s ? { ...DEFAULT_STATE, ...s, screen: 'welcome' } : { ...DEFAULT_STATE };
+  } catch (e) { return { ...DEFAULT_STATE }; }
+}
+
+function buildVars(p, ty) {
+  return {
+    '--bg': p.bg, '--bg2': p.bg2, '--surface': p.surface, '--surface-alt': p.surfaceAlt, '--surface-solid': p.surfaceSolid,
+    '--ink': p.ink, '--ink-soft': p.inkSoft, '--ink-faint': p.inkFaint,
+    '--primary': p.primary, '--secondary': p.secondary, '--highlight': p.highlight,
+    '--glow': p.glow, '--line': p.line, '--line-strong': 'rgba(255,255,255,0.18)', '--star': p.star,
+    '--blobA': p.blobA, '--blobB': p.blobB, '--on-cta': '#000',
+    '--display': ty.display, '--heading': ty.heading, '--body': ty.body, '--mono': ty.mono,
+    '--d-scale': ty.dScale, '--warp': 'none',
+    '--card-bg': '#232845', '--card-bg2': '#141829', '--card-ink': '#FFFFFF', '--card-line': 'rgba(255,255,255,0.2)',
+    fontFamily: ty.body, color: p.ink,
+  };
+}
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "palette": "Aura",
+  "type": "Bebas",
+  "trigger": "Card"
+}/*EDITMODE-END*/;
+
+// Chapters of the journey — drives the landscape rail's constellation progress.
+// Order mirrors the pinned reference slides: Legend → Trials → Omen → Reveal → Path.
+const CHAPTERS = [
+  { key: 'welcome', label: 'The Legend', line: 'Take a side.\nLive a legend.', sub: 'The universe deals you a quest. You decide if you have the nerve to live it.' },
+  { key: 'trials',  label: 'The Trials', line: 'Five questions.\nThen it decides.', sub: 'Age, fear, love — the universe reads you before it answers.' },
+  { key: 'omen',    label: 'The Omen',   line: 'Ask, and the\nuniverse answers.', sub: 'Cast the die, draw a card, or receive the signal. The ritual chooses your path.' },
+  { key: 'reveal',  label: 'The Quest',  line: 'A path has\nchosen you.', sub: 'One provable act. Accept it, live it, and bring back proof.' },
+  { key: 'path',    label: 'Your Path',  line: 'Your constellation\nis forming.', sub: 'Every quest lived becomes a star in the legend you are writing.' },
+];
+// map every screen onto a chapter index
+const SCREEN_CHAPTER = {
+  welcome: 0, signin: 0, quiz: 1, seek: 2, reveal: 3, proof: 3, upload: 3, cooking: 3, verify: 4, complete: 4, share: 4, journal: 4,
+};
+
+function BrandRail({ screen }) {
+  const idx = SCREEN_CHAPTER[screen] ?? 0;
+  const ch = CHAPTERS[idx];
+  return (
+    <aside className="lx-rail">
+      <div className="lx-rail-bg">
+        <div className="ly-stars ly-stars-a" style={{ opacity: 0.5 }} />
+        <div className="ly-stars ly-stars-b" style={{ opacity: 0.28 }} />
+        <div className="ly-blob" style={{ top: '-8%', left: '-18%', width: 420, height: 420, background: 'var(--blobA)', opacity: 0.4 }} />
+        <div className="ly-blob" style={{ bottom: '4%', right: '-22%', width: 360, height: 360, background: 'var(--blobB)', opacity: 0.3 }} />
+      </div>
+      <div className="lx-rail-inner">
+        <div className="lx-rail-top">
+          <Compass size={42} primary="var(--primary)" ink="var(--ink)" ring="var(--secondary)" faint="var(--primary)" spin />
+          <img src="assets/legend-logo.png" alt="Legend" className="lx-rail-logo" />
+        </div>
+
+        <div>
+          <div className="lx-rail-eyebrow"><span className="ly-tick" />Chapter {String(idx + 1).padStart(2, '0')} · {ch.label}</div>
+          <h2 className="lx-rail-line">{ch.line}</h2>
+          <p className="lx-rail-sub">{ch.sub}</p>
+        </div>
+
+        <div className="lx-constellation">
+          {CHAPTERS.map((c, i) => (
+            <div key={c.key} className={`lx-cnode${i === idx ? ' is-active' : ''}${i < idx ? ' is-done' : ''}`}>
+              <span className={`lx-cdot${i === idx ? ' is-active' : ''}${i < idx ? ' is-done' : ''}`} />
+              <span className="lx-clabel">{c.label}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="lx-rail-foot">Legend · a sequential side-quest ritual</div>
+      </div>
+    </aside>
+  );
+}
+
+function App() {
+  const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  const pal = PALETTES[t.palette] || PALETTES['Aura'];
+  const typ = TYPES[t.type] || TYPES['Bebas'];
+  const triggerType = (t.trigger || 'Dice').toLowerCase();
+
+  const [st, setSt] = React.useState(loadState);
+  React.useEffect(() => { try { localStorage.setItem(STORE, JSON.stringify(st)); } catch (e) {} }, [st]);
+  const set = (patch) => setSt(s => ({ ...s, ...patch }));
+
+  const [wide, setWide] = React.useState(typeof window !== 'undefined' ? window.innerWidth >= 980 : true);
+  React.useEffect(() => {
+    const fit = () => setWide(window.innerWidth >= 980);
+    fit(); window.addEventListener('resize', fit); return () => window.removeEventListener('resize', fit);
+  }, []);
+
+  const [toast, toastNode] = useToast();
+  const completedIds = st.completed.map(c => c.id);
+  const tagline = st.answers.legend;
+
+  const go = (screen) => set({ screen });
+  const onBegin = () => go('quiz');
+  const onSignIn = () => go('signin');
+  const onSignInComplete = (name) => set({ answers: { ...st.answers, legend: name }, screen: 'journal' });
+  const onQuiz = (answers) => set({ answers, screen: 'seek' });
+  const onReveal = (quest) => set({ quest, screen: 'reveal' });
+  // Accepting a quest now drops the traveler straight into the upload → render → verify pipeline.
+  const onAccept = () => set({ active: st.quest, proof: null, jobId: null, job: null, screen: 'upload' });
+  const onReroll = () => go('seek');
+  const onCooking = (jobId) => set({ jobId, screen: 'cooking' });
+  const onVerify = (job) => set({ job, screen: 'verify' });
+  const onRetryUpload = () => set({ jobId: null, job: null, screen: 'upload' });
+  const onSealLegend = (job) => {
+    const q = st.quest || st.active;
+    const date = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    const c = { id: q.id, title: q.title, sigil: q.sigil, date, proof: null, score: job && job.grade ? job.grade.score : null, outputUrl: job && job.result ? job.result.outputUrl : null };
+    setSt(s => ({ ...s, completed: [c, ...s.completed.filter(x => x.id !== c.id)], active: null, proof: null, screen: 'complete' }));
+  };
+  const onSubmitProof = (proof) => {
+    const date = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    const c = { id: st.quest.id, title: st.quest.title, sigil: st.quest.sigil, date, proof: proof || null };
+    setSt(s => ({ ...s, completed: [c, ...s.completed.filter(x => x.id !== c.id)], active: null, proof: proof || null, screen: 'complete' }));
+  };
+  const onOpenActive = () => set({ quest: st.active, jobId: null, job: null, screen: 'upload' });
+  const restart = () => { try { localStorage.removeItem(STORE); } catch (e) {} setSt({ ...DEFAULT_STATE }); };
+
+  const exclude = [...completedIds, st.quest ? st.quest.id : null].filter(Boolean);
+
+  let screen;
+  switch (st.screen) {
+    case 'signin': screen = <SignInScreen onContinue={onSignInComplete} onBack={() => go('welcome')} />; break;
+    case 'quiz': screen = <QuizScreen onComplete={onQuiz} onBack={() => go('welcome')} />; break;
+    case 'seek': screen = <SeekScreen triggerType={triggerType} answers={st.answers} exclude={exclude} onReveal={onReveal} onBack={() => go(st.completed.length || st.active ? 'journal' : 'quiz')} />; break;
+    case 'reveal': screen = <RevealScreen quest={st.quest} onAccept={onAccept} onReroll={onReroll} />; break;
+    case 'upload': screen = <UploadScreen quest={st.quest || st.active} answers={st.answers} onCooking={onCooking} onBack={() => go(st.completed.length || st.active ? 'journal' : 'reveal')} />; break;
+    case 'cooking': screen = <CookingScreen jobId={st.jobId} quest={st.quest || st.active} onVerify={onVerify} onRetry={onRetryUpload} onBack={() => go('journal')} />; break;
+    case 'verify': screen = <VerifyScreen job={st.job} quest={st.quest || st.active} onSeal={onSealLegend} onRetry={onRetryUpload} />; break;
+    case 'proof': screen = <ProofScreen quest={st.quest} onSubmit={onSubmitProof} onBack={() => go('journal')} />; break;
+    case 'complete': screen = <CompleteScreen quest={st.quest} tagline={tagline} proof={st.proof} onShare={() => go('share')} onJournal={() => go('journal')} />; break;
+    case 'share': screen = <ShareScreen quest={st.quest} tagline={tagline} completed={st.completed.length} proof={st.proof} toast={toast} onBack={() => go(st.completed.length ? 'journal' : 'complete')} />; break;
+    case 'journal': screen = <JournalScreen tagline={tagline} completed={st.completed} active={st.active} onSeek={() => go('seek')} onOpenActive={onOpenActive} />; break;
+    default: screen = <WelcomeScreen onBegin={onBegin} onSignIn={onSignIn} />;
+  }
+
+  return (
+    <div className="lx-app" style={buildVars(pal, typ)}>
+      {wide && <BrandRail screen={st.screen} />}
+      <main className="lx-stage">
+        <div className="lx-card">
+          <div className="ly-route" key={st.screen}>{screen}</div>
+          {toastNode}
+        </div>
+      </main>
+
+      <TweaksPanel title="Tweaks">
+        <TweakSection label="World / mood" />
+        <TweakRadio label="Palette" value={t.palette} options={Object.keys(PALETTES)} onChange={v => setTweak('palette', v)} />
+        <TweakSection label="Typography" />
+        <TweakRadio label="Wordmark" value={t.type} options={Object.keys(TYPES)} onChange={v => setTweak('type', v)} />
+        <TweakSection label="The omen ritual" />
+        <TweakRadio label="Trigger" value={t.trigger} options={['Dice', 'Card', 'Phone']} onChange={v => setTweak('trigger', v)} />
+        <TweakSection label="Story" />
+        <TweakButton label="Restart from the beginning" onClick={restart} />
+      </TweaksPanel>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

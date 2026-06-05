@@ -4,6 +4,7 @@ const { resolveTool } = require("./ffmpegPaths");
 const { analyzeVideos, buildTimeline, mediaSourcePath, roundTime } = require("./videoEngine");
 const { createPromptPlan } = require("./promptPlanner");
 const { runProcess } = require("./process");
+const { parseRenderFraction } = require("../web/lib/jobProgress");
 
 const HYPERFRAMES_VERSION = "0.6.70";
 const PROJECT_ROOT = path.resolve(__dirname, "..", "..");
@@ -357,6 +358,7 @@ function concatFilter(timeline, mediaById, aspect) {
 
 async function createSideQuestProject(payload, options = {}) {
   const { onLog } = options;
+  const onStage = options.onStage || (() => {});
   const videoPaths = (payload.videoPaths || []).filter(Boolean);
 
   if (!videoPaths.length) {
@@ -366,7 +368,11 @@ async function createSideQuestProject(payload, options = {}) {
   const outputRoot = payload.outputRoot || path.join(PROJECT_ROOT, "web-data", "runs");
   await fs.mkdir(outputRoot, { recursive: true });
 
+  onStage("analyze", { status: "active", detail: `Probing ${videoPaths.length} clip${videoPaths.length === 1 ? "" : "s"}` });
   const media = await analyzeVideos(videoPaths, { onLog });
+  onStage("analyze", { status: "done", detail: `${media.length} clip${media.length === 1 ? "" : "s"} analyzed` });
+
+  onStage("select", { status: "active" });
   const plan = await createPromptPlan(
     {
       ...payload,
@@ -379,6 +385,7 @@ async function createSideQuestProject(payload, options = {}) {
   if (!timelineResult.timeline.length) {
     throw new Error("No usable video segments were found.");
   }
+  onStage("select", { status: "done", detail: `${timelineResult.timeline.length} moments selected` });
 
   const runName = `${new Date().toISOString().replace(/[:.]/g, "-")}-${slugify(plan.title)}`;
   const projectDir = path.join(outputRoot, runName);
@@ -398,6 +405,7 @@ async function createSideQuestProject(payload, options = {}) {
   });
 
   if (onLog) onLog(`Concatenating ${timelineResult.timeline.length} selected moments\n`);
+  onStage("concat", { status: "active", detail: `Stitching ${timelineResult.timeline.length} clips` });
   await runProcess(
       resolveTool("ffmpeg"),
     [
@@ -432,7 +440,9 @@ async function createSideQuestProject(payload, options = {}) {
     ],
     { cwd: PROJECT_ROOT, onLog }
   );
+  onStage("concat", { status: "done" });
 
+  onStage("compose", { status: "active" });
   await fs.writeFile(path.join(projectDir, "package.json"), packageJsonForProject(runName));
   await fs.writeFile(path.join(projectDir, "hyperframes.json"), hyperframesConfig());
   await fs.writeFile(path.join(projectDir, "DESIGN.md"), buildDesignMarkdown(plan, payload));
@@ -454,11 +464,22 @@ async function createSideQuestProject(payload, options = {}) {
   );
 
   if (onLog) onLog(`Generated HyperFrames project: ${projectDir}\n`);
+  onStage("compose", { status: "done" });
+
+  onStage("lint", { status: "active" });
   const lint = await hyperframesArgs(["lint"]);
   await runProcess(lint.command, lint.args, { cwd: projectDir, onLog });
+  onStage("lint", { status: "done" });
 
+  onStage("render", { status: "active", detail: `${payload.quality || "draft"} · ${payload.fps || 24}fps` });
+  const onRenderLog = (line) => {
+    if (onLog) onLog(line);
+    const fraction = parseRenderFraction(String(line));
+    if (fraction != null) onStage("render", { percent: fraction });
+  };
   const render = await hyperframesArgs(["render", "--output", finalVideo, "--quality", payload.quality || "draft", "--fps", String(payload.fps || 24)]);
-  await runProcess(render.command, render.args, { cwd: projectDir, onLog });
+  await runProcess(render.command, render.args, { cwd: projectDir, onLog: onRenderLog });
+  onStage("render", { status: "done" });
 
   return {
     projectDir,
