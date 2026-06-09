@@ -4,25 +4,23 @@ const path = require("node:path");
 let logFile = null;
 
 function init(dataRoot) {
-  logFile = path.join(dataRoot, "analytics", "grades.jsonl");
+  logFile = path.join(dataRoot, "analytics", "verifications.jsonl");
 }
 
-async function recordGrade(job, grade) {
-  if (!logFile || !grade) return;
+async function recordVerification(job, verification) {
+  if (!logFile || !verification) return;
   const entry = {
     jobId: job.id,
     title: job.title,
     persona: job.persona,
     sideQuest: job.sideQuest,
-    style: job.style,
-    aspect: job.aspect,
-    targetDuration: job.targetDuration,
-    score: grade.score,
-    verdict: grade.verdict,
-    breakdown: grade.breakdown,
-    provider: grade.provider,
-    model: grade.model,
-    gradedAt: grade.gradedAt
+    questSlug: job.questSlug || null,
+    decision: verification.decision,
+    fulfilled: verification.fulfilled,
+    confidence: verification.confidence,
+    provider: verification.provider,
+    model: verification.model,
+    verifiedAt: verification.verifiedAt
   };
   await fs.mkdir(path.dirname(logFile), { recursive: true });
   await fs.appendFile(logFile, `${JSON.stringify(entry)}\n`);
@@ -53,52 +51,55 @@ function avg(values) {
   return Math.round((values.reduce((sum, value) => sum + value, 0) / values.length) * 100) / 100;
 }
 
-function groupAverage(entries, key) {
+function countByDecision(entries) {
+  const buckets = { pass: 0, flag: 0, reject: 0 };
+  for (const entry of entries) {
+    if (buckets[entry.decision] != null) buckets[entry.decision] += 1;
+  }
+  return buckets;
+}
+
+function groupDecisions(entries, key) {
   const buckets = {};
   for (const entry of entries) {
     const bucket = entry[key] || "unknown";
-    (buckets[bucket] = buckets[bucket] || []).push(entry.score);
+    const b = (buckets[bucket] = buckets[bucket] || { count: 0, pass: 0 });
+    b.count += 1;
+    if (entry.decision === "pass") b.pass += 1;
   }
   return Object.fromEntries(
     Object.entries(buckets)
-      .map(([name, scores]) => [name, { count: scores.length, avgScore: avg(scores) }])
-      .sort((a, b) => (b[1].avgScore || 0) - (a[1].avgScore || 0))
+      .map(([name, b]) => [name, { count: b.count, passRate: b.count ? Math.round((b.pass / b.count) * 100) / 100 : 0 }])
+      .sort((a, b) => (b[1].passRate || 0) - (a[1].passRate || 0))
   );
 }
 
 async function summary() {
   const entries = await readEntries();
   if (!entries.length) {
-    return { totalGraded: 0, avgScore: null, breakdown: {}, byProvider: {}, byPersona: {}, bySideQuest: {}, recent: [] };
+    return { totalVerified: 0, passRate: null, avgConfidence: null, decisions: { pass: 0, flag: 0, reject: 0 }, byProvider: {}, byPersona: {}, bySideQuest: {}, recent: [] };
   }
 
-  const breakdown = {};
-  for (const dim of ["promptMatch", "visualQuality", "pacing", "audienceFit"]) {
-    breakdown[dim] = avg(entries.map((entry) => entry.breakdown?.[dim]).filter((value) => Number.isFinite(value)));
-  }
-
-  const distribution = { ships: 0, strong: 0, passable: 0, weak: 0, "off-brief": 0 };
-  for (const entry of entries) {
-    if (distribution[entry.verdict] != null) distribution[entry.verdict] += 1;
-  }
+  const decisions = countByDecision(entries);
+  const passRate = Math.round((decisions.pass / entries.length) * 100) / 100;
 
   return {
-    totalGraded: entries.length,
-    avgScore: avg(entries.map((entry) => entry.score)),
-    breakdown,
-    distribution,
-    byProvider: groupAverage(entries, "provider"),
-    byPersona: groupAverage(entries, "persona"),
-    bySideQuest: groupAverage(entries, "sideQuest"),
+    totalVerified: entries.length,
+    passRate,
+    avgConfidence: avg(entries.map((entry) => entry.confidence).filter((value) => Number.isFinite(value))),
+    decisions,
+    byProvider: groupDecisions(entries, "provider"),
+    byPersona: groupDecisions(entries, "persona"),
+    bySideQuest: groupDecisions(entries, "sideQuest"),
     recent: entries.slice(-10).reverse().map((entry) => ({
       jobId: entry.jobId,
       title: entry.title,
-      score: entry.score,
-      verdict: entry.verdict,
+      decision: entry.decision,
+      confidence: entry.confidence,
       provider: entry.provider,
-      gradedAt: entry.gradedAt
+      verifiedAt: entry.verifiedAt
     }))
   };
 }
 
-module.exports = { init, recordGrade, summary };
+module.exports = { init, recordVerification, summary };

@@ -4,7 +4,6 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const express = require("express");
 const multer = require("multer");
-const { createSideQuestProject } = require("../engine/sideQuestProject");
 const { runProcess } = require("../engine/process");
 const { resolveTool } = require("../engine/ffmpegPaths");
 const { isSupportedMediaUpload, supportedFormatsLabel } = require("../engine/videoFormats");
@@ -29,12 +28,13 @@ function loadDotEnv(filePath = path.join(process.cwd(), ".env")) {
 
 loadDotEnv();
 
-const { gradeQuest, graderTier } = require("../engine/questGrader");
+const { verifyQuest, verifierTier } = require("../engine/questVerifier");
 const objectStorage = require("./lib/objectStorage");
 const jobProgress = require("./lib/jobProgress");
 const analytics = require("./lib/analytics");
 const questStore = require("./lib/questStore");
 const authStore = require("./lib/authStore");
+const proofLedger = require("./lib/proofLedger");
 
 const PORT = Number(process.env.PORT || 4317);
 const BASE_PATH = normalizeBasePath(process.env.LEGEND_BASE_PATH || "");
@@ -307,6 +307,9 @@ async function ingestUploads(jobId, files) {
     }
 
     seen.add(hash);
+    // Cross-submission provenance: was this exact file ever submitted as proof
+    // before? `record` returns true if the hash already existed in the ledger.
+    const reused = await proofLedger.record(hash, jobId);
     const storedName = safeFilename(file.originalname, uploads.length, hash);
     const storedPath = path.join(uploadDir, storedName);
     await fs.rename(file.path, storedPath);
@@ -324,6 +327,7 @@ async function ingestUploads(jobId, files) {
       objectKey: storage ? objectKey : null,
       storage,
       hash,
+      reused,
       size: file.size,
       mimeType: file.mimetype
     });
@@ -354,15 +358,37 @@ function urlForRunPath(filePath) {
   return mountPath(`/outputs/${rel.split(path.sep).map(encodeURIComponent).join("/")}`);
 }
 
+// Make the raw proof servable for the share/verdict screens. With object
+// storage we push it under the allowlisted `outputs/` prefix; locally we copy it
+// into RUNS_ROOT so the existing /outputs static route serves it. We never edit
+// the file — the user shares their own footage with a verified badge.
+async function publishProof(job, upload) {
+  const ext = path.extname(upload.storedName) || "";
+  const key = `outputs/${job.id}/proof${ext}`;
+  const storage = await objectStorage.putFile(key, upload.path, {
+    contentType: upload.mimeType || "application/octet-stream",
+    metadata: { jobid: job.id }
+  });
+  if (storage) return objectStorage.appUrlForKey(key, mountPath);
+  const localDir = path.join(RUNS_ROOT, job.id);
+  await fs.mkdir(localDir, { recursive: true });
+  const localPath = path.join(localDir, `proof${ext}`);
+  await fs.copyFile(upload.path, localPath);
+  return urlForRunPath(localPath);
+}
+
 function compactShare(job) {
-  if (job.status !== "complete" || !job.result?.outputUrl) return null;
+  // Only a verified (PASS) proof is shareable — the badge must mean something.
+  if (job.status !== "complete" || job.verification?.decision !== "pass") return null;
   return {
     jobId: job.id,
     title: job.sideQuest || job.title,
     questSlug: job.questSlug || null,
     traveler: job.persona || null,
-    outputUrl: job.result.outputUrl,
-    score: job.grade?.score ?? null,
+    proofUrl: job.result?.proofUrl || null,
+    proofKind: job.result?.proofKind || "video",
+    decision: job.verification.decision,
+    confidence: job.verification.confidence ?? null,
     completedAt: job.updatedAt || job.createdAt
   };
 }
@@ -391,13 +417,14 @@ function compactJob(job) {
       objectKey: file.objectKey || null,
       storage: file.storage ? { provider: file.storage.provider, bucket: file.storage.bucket, key: file.storage.key } : null,
       hash: file.hash,
+      reused: Boolean(file.reused),
       size: file.size,
       mimeType: file.mimeType
     })),
     duplicateCount: job.duplicates.length,
     duplicates: job.duplicates,
     result: job.result || null,
-    grade: job.grade || null,
+    verification: job.verification || null,
     storageMode: job.storageMode || objectStorage.mode(),
     error: job.error || null,
     progress: jobProgress.summarize(job.progress),
@@ -463,104 +490,68 @@ async function runJob(jobId) {
 
   try {
     job.status = "processing";
-    onLog("Render started");
+    onLog("Verification started");
     await flush();
     await materializeUploads(job, onLog, onStage);
 
-    const result = await createSideQuestProject(
-      {
-        videoPaths: job.uploads.map((file) => file.path),
-        prompt: job.prompt,
-        audience: job.persona,
-        sideQuest: job.sideQuest,
-        questDifficulty: job.questDifficulty,
-        questXp: job.questXp,
-        questCategory: job.questCategory,
-        aspect: job.aspect,
-        targetDuration: job.targetDuration,
-        quality: "draft",
-        fps: 24,
-        outputRoot: RUNS_ROOT
-      },
-      { onLog, onStage }
-    );
-
-    const renderSeconds = jobProgress.renderDurationSeconds(job.progress);
-    if (renderSeconds) jobProgress.recordRenderDuration(DATA_ROOT, renderSeconds).catch(() => {});
-
-    const probe = await probeOutput(result.finalVideo);
-    const outputKey = `outputs/${job.id}/side-quest-final.mp4`;
-    const manifestKey = `outputs/${job.id}/source-manifest.json`;
-    const indexKey = `outputs/${job.id}/index.html`;
-    const outputStorage = await objectStorage.putFile(outputKey, result.finalVideo, {
-      contentType: "video/mp4",
-      metadata: { jobid: job.id }
-    });
-    const manifestStorage = await objectStorage.putFile(manifestKey, result.manifestPath, {
-      contentType: "application/json",
-      metadata: { jobid: job.id }
-    });
-    const indexStorage = await objectStorage.putFile(indexKey, result.indexPath, {
-      contentType: "text/html",
-      metadata: { jobid: job.id }
-    });
+    // The proof is the user's raw upload. If they sent several files we verify
+    // the first as the primary proof (the screen shows that clip). No editing.
+    const primary = job.uploads[0];
     job.storageMode = objectStorage.mode();
-    job.result = {
-      outputUrl: outputStorage ? objectStorage.appUrlForKey(outputKey, mountPath) : urlForRunPath(result.finalVideo),
-      projectUrl: indexStorage ? objectStorage.appUrlForKey(indexKey, mountPath) : urlForRunPath(result.indexPath),
-      manifestUrl: manifestStorage ? objectStorage.appUrlForKey(manifestKey, mountPath) : urlForRunPath(result.manifestPath),
-      projectDir: result.projectDir,
-      outputPath: result.finalVideo,
-      outputObject: outputStorage,
-      manifestObject: manifestStorage,
-      indexObject: indexStorage,
-      totalDuration: result.totalDuration,
-      clipCount: result.clips.length,
-      planTitle: result.plan.title,
-      planStyle: result.plan.styleName,
-      probe
-    };
-    onLog("Render complete");
 
+    onStage("verify", { status: "active" });
+    onLog("Verifying the proof against the claim");
+
+    const verification = await verifyQuest(
+      {
+        proofPath: primary.path,
+        claim: job.prompt,
+        sideQuest: job.sideQuest,
+        persona: job.persona,
+        provenance: { hashReused: job.uploads.some((file) => file.reused) },
+        now: Date.now()
+      },
+      { onLog }
+    );
+    job.verification = verification;
+
+    // Make the raw proof shareable regardless of decision (the UI gates on the
+    // decision itself). Best-effort — a publish failure must not fail the job.
+    let proofUrl = null;
     try {
-      onStage("grade", { status: "active" });
-      onLog("Grading output against the request");
-      const grade = await gradeQuest(
-        {
-          prompt: job.prompt,
-          persona: job.persona,
-          sideQuest: job.sideQuest,
-          style: job.style,
-          aspect: job.aspect,
-          targetDuration: job.targetDuration,
-          plan: result.plan,
-          finalVideo: result.finalVideo,
-          totalDuration: result.totalDuration,
-          clipCount: result.clips.length,
-          probe
-        },
-        { onLog }
-      );
-      job.grade = grade;
-      onLog(`Grade: ${grade.score}/10 (${grade.verdict}) via ${grade.provider}`);
-      await analytics.recordGrade(job, grade).catch(() => {});
-      if (job.questSlug) {
-        questStore
-          .recordCompletion({
-            slug: job.questSlug,
-            jobId: job.id,
-            gradeScore: grade.score,
-            xpEarned: job.questXp || 0,
-            surface: "web",
-            userId: job.user?.id || null
-          })
-          .catch(() => {});
-      }
-      onStage("grade", { status: "done", detail: `${grade.score}/10 ${grade.verdict}` });
+      proofUrl = await publishProof(job, primary);
     } catch (error) {
-      onStage("grade", { status: "skipped", detail: "Grading skipped" });
-      onLog(`Grading skipped: ${error.message}`);
+      onLog(`Could not publish proof for sharing: ${error.message}`);
     }
+    job.result = {
+      proofUrl,
+      proofKind: String(primary.mimeType || "").startsWith("image/") ? "image" : "video",
+      proofName: primary.originalName
+    };
+
+    onLog(`Verdict: ${verification.decision.toUpperCase()} (confidence ${verification.confidence}) — ${verification.reason || ""}`.trim());
+    await analytics.recordVerification(job, verification).catch(() => {});
+
+    // Only a PASS counts as a real completion / earns XP. Flagged and rejected
+    // proofs do not advance the traveler.
+    if (job.questSlug && verification.decision === "pass") {
+      questStore
+        .recordCompletion({
+          slug: job.questSlug,
+          jobId: job.id,
+          gradeScore: Math.round(verification.confidence * 100) / 10, // 0-10 scale for legacy progress aggregation
+          xpEarned: job.questXp || 0,
+          surface: "web",
+          userId: job.user?.id || null,
+          decision: verification.decision,
+          confidence: verification.confidence,
+          evidence: verification.evidence,
+          sourceHash: primary.hash
+        })
+        .catch(() => {});
+    }
+
+    onStage("verify", { status: "done", detail: `${verification.decision} · ${Math.round((verification.confidence || 0) * 100)}%` });
 
     job.status = "complete";
     jobProgress.finishProgress(job.progress, "complete");
@@ -570,7 +561,7 @@ async function runJob(jobId) {
     job.status = "failed";
     job.error = error.stack || error.message;
     jobProgress.finishProgress(job.progress, "failed");
-    onLog(`Render failed: ${error.message}`);
+    onLog(`Verification failed: ${error.message}`);
     await persist(true);
   }
 }
@@ -602,7 +593,7 @@ function sendBuilder(req, res) {
 }
 
 router.get("/healthz", (req, res) => {
-  res.json({ ok: true, basePath: BASE_PATH || "/", authRequired: AUTH_REQUIRED, authMode: AUTH_MODE, storage: objectStorage.mode(), quests: questStore.mode(), grader: graderTier() });
+  res.json({ ok: true, basePath: BASE_PATH || "/", authRequired: AUTH_REQUIRED, authMode: AUTH_MODE, storage: objectStorage.mode(), quests: questStore.mode(), verifier: verifierTier() });
 });
 
 router.get("/api/side-quests", requireUser, async (req, res, next) => {
@@ -672,7 +663,7 @@ router.post("/api/side-quests/pick", requireUser, async (req, res, next) => {
 
 router.get("/api/analytics", requireUser, async (req, res, next) => {
   try {
-    res.json({ grader: graderTier(), ...(await analytics.summary()) });
+    res.json({ verifier: verifierTier(), ...(await analytics.summary()) });
   } catch (error) {
     next(error);
   }
@@ -931,13 +922,14 @@ router.use((error, req, res, next) => {
 async function main() {
   await Promise.all([fs.mkdir(TMP_DIR, { recursive: true }), fs.mkdir(UPLOAD_ROOT, { recursive: true }), fs.mkdir(JOB_ROOT, { recursive: true }), fs.mkdir(RUNS_ROOT, { recursive: true })]);
   analytics.init(DATA_ROOT);
-  const tier = graderTier();
+  proofLedger.init(DATA_ROOT);
+  const tier = verifierTier();
   app.use(BASE_PATH || "/", router);
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Legend web server listening on http://0.0.0.0:${PORT}${BASE_PATH || "/"}`);
-    console.log(`Quest grader level: ${tier.tier} (${tier.model})${tier.multimodal ? " [multimodal]" : ""}`);
-    if (tier.tier === "heuristic") {
-      console.log("  Set LEGEND_GEMINI_API_KEY (preferred) or CLOUDFLARE_WORKERS_AI_TOKEN to enable an AI grader.");
+    console.log(`Quest verifier: ${tier.tier} (${tier.model})${tier.multimodal ? " [multimodal]" : ""}`);
+    if (tier.tier !== "gemini") {
+      console.log("  Set LEGEND_GEMINI_API_KEY to enable AI proof verification. Without it every proof is flagged for manual review.");
     }
   });
 }
