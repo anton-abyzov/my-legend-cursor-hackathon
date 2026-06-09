@@ -411,7 +411,7 @@ function App() {
         const share = body.share;
         const quest = (typeof QUESTS !== 'undefined' && QUESTS.find(q => q.id === share.questSlug))
           || { id: share.questSlug || 'shared', title: share.title, sigil: '✦', essence: '' };
-        const proof = share.outputUrl ? [{ src: share.outputUrl, kind: 'video' }] : null;
+        const proof = share.proofUrl ? [{ src: share.proofUrl, kind: share.proofKind || 'video' }] : null;
         if (cancelled) return;
         setSt(s => ({
           ...s,
@@ -446,7 +446,7 @@ function App() {
   const onSignInComplete = (name) => set({ answers: { ...st.answers, legend: name }, screen: 'journal' });
   const onQuiz = (answers) => set({ answers, screen: 'seek' });
   const onReveal = (quest) => set({ quest, screen: 'reveal' });
-  // Accepting a quest now drops the traveler straight into the upload → render → verify pipeline.
+  // Accepting a quest now drops the traveler straight into the upload → verify pipeline.
   const onAccept = () => set({ active: st.quest, proof: null, jobId: null, job: null, screen: 'upload' });
   const onReroll = () => go('seek');
   const onCooking = (jobId) => set({ jobId, screen: 'cooking' });
@@ -455,10 +455,14 @@ function App() {
   const onSealLegend = (job) => {
     const q = st.quest || st.active;
     const date = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    const outputUrl = job && job.result ? job.result.outputUrl : null;
-    const proof = outputUrl ? [{ src: outputUrl, kind: 'video' }] : null;
+    const proofUrl = job && job.result ? job.result.proofUrl : null;
+    const proofKind = (job && job.result && job.result.proofKind) || 'video';
+    const proof = proofUrl ? [{ src: proofUrl, kind: proofKind }] : st.proof;
     const jobId = job ? job.id : st.jobId;
-    const c = { id: q.id, title: q.title, sigil: q.sigil, date, proof, score: job && job.grade ? job.grade.score : null, outputUrl, jobId };
+    const confidence = job && job.verification ? job.verification.confidence : null;
+    const decision = job && job.verification ? job.verification.decision : null;
+    // `outputUrl` field retained as the share-media pointer for downstream screens.
+    const c = { id: q.id, title: q.title, sigil: q.sigil, date, proof, confidence, decision, outputUrl: proofUrl, jobId };
     setSt(s => ({ ...s, completed: [c, ...s.completed.filter(x => x.id !== c.id)], active: null, proof, jobId, screen: 'complete' }));
   };
   const onSubmitProof = (proof) => {
@@ -497,7 +501,7 @@ function App() {
     case 'reveal': screen = <RevealScreen quest={st.quest} onAccept={onAccept} onReroll={onReroll} />; break;
     case 'upload': screen = <UploadScreen quest={st.quest || st.active} answers={st.answers} onCooking={onCooking} onBack={() => go(st.completed.length || st.active ? 'journal' : 'reveal')} />; break;
     case 'cooking': screen = <CookingScreen jobId={st.jobId} quest={st.quest || st.active} onVerify={onVerify} onRetry={onRetryUpload} onBack={() => go('journal')} />; break;
-    case 'verify': screen = <VerifyScreen job={st.job} quest={st.quest || st.active} onSeal={onSealLegend} onRetry={onRetryUpload} />; break;
+    case 'verify': screen = <VerifyScreen job={st.job} quest={st.quest || st.active} proof={st.proof} onSeal={onSealLegend} onRetry={onRetryUpload} />; break;
     case 'proof': screen = <ProofScreen quest={st.quest} onSubmit={onSubmitProof} onBack={() => go('journal')} />; break;
     case 'complete': screen = <CompleteScreen quest={st.quest} tagline={tagline} proof={st.proof} outputUrl={shareOutputUrl} onShare={() => go('share')} onJournal={() => go('journal')} />; break;
     case 'share': screen = <ShareScreen quest={st.quest} tagline={tagline} completed={st.completed.length} proof={st.proof} outputUrl={shareOutputUrl} jobId={shareJobId} publicView={st.publicShare} toast={toast} onBack={() => go(st.completed.length && !st.publicShare ? 'journal' : 'complete')} />; break;

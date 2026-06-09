@@ -2,7 +2,7 @@
   "name": "legend-hyperframes-desktop",
   "version": "0.1.1",
   "private": true,
-  "description": "macOS desktop MVP for prompt-directed HyperFrames video assembly.",
+  "description": "Legend — AI proof verification for real-world side quests (create → upload raw proof → AI verify → share).",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
@@ -11,9 +11,7 @@
     "dist:mac": "electron-builder --mac dmg zip --publish never",
     "test:e2e": "playwright test",
     "build:quests": "node scripts/buildSideQuests.js",
-    "seed:supabase": "node scripts/seedSupabase.js",
-    "doctor": "npx --yes hyperframes@0.6.70 doctor",
-    "hf:doctor": "npx --yes hyperframes@0.6.70 doctor"
+    "seed:supabase": "node scripts/seedSupabase.js"
   },
   "build": {
     "appId": "com.legend.hyperframes",
@@ -50,7 +48,6 @@
     "@ffprobe-installer/ffprobe": "^2.1.2",
     "@supabase/supabase-js": "^2.107.0",
     "express": "^5.2.1",
-    "hyperframes": "^0.6.70",
     "multer": "^2.1.1"
   }
 }

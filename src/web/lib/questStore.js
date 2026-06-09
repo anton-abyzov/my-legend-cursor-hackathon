@@ -240,8 +240,15 @@ function levelForXp(xp) {
   return 1 + Math.floor(Math.max(0, xp) / XP_PER_LEVEL);
 }
 
-async function recordCompletion({ slug, jobId, gradeScore, xpEarned, surface = "web", userId = null } = {}) {
+async function recordCompletion({ slug, jobId, gradeScore, xpEarned, surface = "web", userId = null, decision = null, confidence = null, evidence = null, sourceHash = null } = {}) {
   if (!slug) return;
+  const verification = {
+    decision: decision || null,
+    confidence: confidence == null ? null : Number(confidence),
+    evidence: evidence || null,
+    source_hash: sourceHash || null,
+    verified_at: decision ? new Date().toISOString() : null
+  };
   if (!supabaseClient()) {
     await writeLocalProgress((store) => {
       store.completions.push({
@@ -250,7 +257,8 @@ async function recordCompletion({ slug, jobId, gradeScore, xpEarned, surface = "
         grade_score: gradeScore == null ? null : Number(gradeScore),
         xp_earned: Math.max(0, Number(xpEarned) || 0),
         surface: surface === "desktop" ? "desktop" : "web",
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
+        ...verification
       });
     });
     return;
@@ -263,7 +271,8 @@ async function recordCompletion({ slug, jobId, gradeScore, xpEarned, surface = "
         job_id: jobId || null,
         grade_score: gradeScore == null ? null : Number(gradeScore),
         xp_earned: Math.max(0, Number(xpEarned) || 0),
-        surface: surface === "desktop" ? "desktop" : "web"
+        surface: surface === "desktop" ? "desktop" : "web",
+        ...verification
       },
       userId
     );
