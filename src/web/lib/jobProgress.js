@@ -2,18 +2,14 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 
 const STAGES = [
-  { key: "upload", label: "Restoring uploads", weight: 4, expected: 2 },
-  { key: "analyze", label: "Analyzing footage", weight: 14, expected: 7 },
-  { key: "select", label: "Selecting moments", weight: 5, expected: 2 },
-  { key: "concat", label: "Stitching clips", weight: 12, expected: 8 },
-  { key: "compose", label: "Composing HyperFrames", weight: 4, expected: 1 },
-  { key: "lint", label: "Linting composition", weight: 4, expected: 3 },
-  { key: "render", label: "Rendering video", weight: 49, expected: 90 },
-  { key: "grade", label: "Grading result", weight: 8, expected: 6 }
+  { key: "upload", label: "Ingesting proof", weight: 20, expected: 3 },
+  { key: "verify", label: "Verifying proof", weight: 80, expected: 14 }
 ];
 
 const STAGE_BY_KEY = new Map(STAGES.map((stage) => [stage.key, stage]));
-const DEFAULT_RENDER_SECONDS = STAGE_BY_KEY.get("render").expected;
+// Kept as the default "long stage" estimate for ETA smoothing. The verify stage
+// is now the dominant one; the name is retained to avoid churn in the helpers.
+const DEFAULT_RENDER_SECONDS = STAGE_BY_KEY.get("verify").expected;
 const MAX_HISTORY = 12;
 
 function createProgress(expectedRenderSeconds = DEFAULT_RENDER_SECONDS) {

