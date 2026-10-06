@@ -518,10 +518,11 @@ function lyQuestBody(quest, answers) {
   fd.append('sideQuest', quest.title);
   fd.append('questSlug', quest.id);
   fd.append('persona', lyPersona(answers));
-  fd.append('style', 'cinematic proof');
+  fd.append('style', 'raw proof');
   fd.append('aspect', 'vertical');
   fd.append('targetDuration', '18');
-  fd.append('prompt', `Prove this side quest was lived: ${quest.essence} Select the strongest audible moments, cut silence, and end on a payoff frame.`);
+  // This is the CLAIM the verifier checks the footage against.
+  fd.append('prompt', `The user claims they completed this side quest: "${quest.title}". ${quest.essence || ''} Verify the uploaded footage genuinely shows this action happening.`);
   const diff = { 1: 'easy', 2: 'medium', 3: 'hard' }[quest.scale];
   if (diff) fd.append('questDifficulty', diff);
   fd.append('questXp', String((quest.scale || 0) * 100));
@@ -584,7 +585,7 @@ function UploadScreen({ quest, answers, onCooking, onBack }) {
       <TopBar onBack={onBack} label="Proof of Legend" />
       <div className="ly-eyebrow"><span className="ly-tick" />Bring back the footage</div>
       <h1 className="ly-h1" style={{ marginTop: 10, fontSize: 31 }}>{quest.title}</h1>
-      <p className="ly-note" style={{ marginTop: 8 }}>{quest.proof || 'Upload photos or raw clips. The forge will cut them into proof.'}</p>
+      <p className="ly-note" style={{ marginTop: 8 }}>{quest.proof || 'Upload your raw photos or clips. The AI will verify they prove the quest.'}</p>
 
       <input ref={inputRef} type="file" accept={PROOF_ACCEPT} multiple onChange={onPick} style={{ display: 'none' }} />
       <div className={`ly-upload ly-upload-video${files.length ? ' has-img' : ''}`} onClick={() => inputRef.current && inputRef.current.click()} style={{ marginTop: 20 }}>
@@ -632,14 +633,14 @@ function UploadScreen({ quest, answers, onCooking, onBack }) {
           </div>
           <div className="ly-eyebrow" style={{ marginTop: 8 }}>
             {progress >= 100
-              ? 'Lighting the forge…'
+              ? 'Sending to the verifier…'
               : <span>Uploading <span className="ly-num">{progress}%</span> · <span className="ly-num">{lyBytes(progress / 100 * totalSize)}</span> / <span className="ly-num">{lyBytes(totalSize)}</span></span>}
           </div>
         </div>
       )}
 
       <div style={{ flex: 1, minHeight: 18 }} />
-      <Btn onClick={begin} disabled={!files.length || busy} arrow style={{ marginTop: 18 }}>{busy ? (progress >= 100 ? 'Lighting the forge…' : `Uploading ${progress}%…`) : 'Cook my proof'}</Btn>
+      <Btn onClick={begin} disabled={!files.length || busy} arrow style={{ marginTop: 18 }}>{busy ? (progress >= 100 ? 'Verifying…' : `Uploading ${progress}%…`) : 'Verify my proof'}</Btn>
     </Screen>);
 
 }
@@ -647,9 +648,7 @@ function UploadScreen({ quest, answers, onCooking, onBack }) {
 // ───────────────────────── Cooking (parallel render) ─────────────────────────
 const LY_STAGES = [
   { key: 'upload', label: 'Ingest' },
-  { key: 'plan', label: 'Plan' },
-  { key: 'render', label: 'Render' },
-  { key: 'grade', label: 'Judge' },
+  { key: 'verify', label: 'Verify' },
 ];
 
 function CookingScreen({ jobId, quest, onVerify, onRetry, onBack }) {
@@ -691,7 +690,7 @@ function CookingScreen({ jobId, quest, onVerify, onRetry, onBack }) {
           return;
         }
         if (j.status === 'failed') {
-          setFailed(j.error || 'The forge collapsed mid-render.');
+          setFailed(j.error || 'The verifier collapsed mid-check.');
           return;
         }
         timerRef.current = setTimeout(poll, 2200);
@@ -717,13 +716,14 @@ function CookingScreen({ jobId, quest, onVerify, onRetry, onBack }) {
   }, [jobId]);
 
   const stageState = (key) => {
-    const st = job && job.progress && job.progress.stages && job.progress.stages[key];
-    if (st && st.status) return st.status;
+    const stages = job && job.progress && job.progress.stages;
+    if (Array.isArray(stages)) {
+      const st = stages.find((s) => s && s.key === key);
+      if (st && st.status) return st.status;
+    }
     // fallback heuristic from overall pct
-    if (key === 'upload') return pct > 12 ? 'done' : 'active';
-    if (key === 'plan') return pct > 30 ? 'done' : pct > 12 ? 'active' : 'pending';
-    if (key === 'render') return pct > 88 ? 'done' : pct > 30 ? 'active' : 'pending';
-    if (key === 'grade') return pct >= 99 ? 'active' : 'pending';
+    if (key === 'upload') return pct > 18 ? 'done' : 'active';
+    if (key === 'verify') return pct >= 99 ? 'done' : pct > 18 ? 'active' : 'pending';
     return 'pending';
   };
 
@@ -732,8 +732,8 @@ function CookingScreen({ jobId, quest, onVerify, onRetry, onBack }) {
       <Screen blobs top={64} bottom={44} center contentStyle={{ justifyContent: 'center', alignItems: 'center', textAlign: 'center' }}>
         <div className="ly-reveal-in" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           <Sigil style={{ fontSize: 54, color: 'var(--primary)', textShadow: '0 0 24px var(--glow)' }}>⚠</Sigil>
-          <div className="ly-eyebrow" style={{ marginTop: 18, justifyContent: 'center' }}><span className="ly-tick" />The render broke</div>
-          <h1 className="ly-h1" style={{ marginTop: 8, fontSize: 30 }}>The forge faltered</h1>
+          <div className="ly-eyebrow" style={{ marginTop: 18, justifyContent: 'center' }}><span className="ly-tick" />The check broke</div>
+          <h1 className="ly-h1" style={{ marginTop: 8, fontSize: 30 }}>The verifier faltered</h1>
           <p className="ly-note" style={{ textAlign: 'center', maxWidth: 300, marginTop: 10 }}>{String(failed).split('\n')[0].slice(0, 220)}</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center', marginTop: 30, width: '100%' }}>
             <Btn onClick={onRetry} arrow>Try another take</Btn>
@@ -747,15 +747,15 @@ function CookingScreen({ jobId, quest, onVerify, onRetry, onBack }) {
   const shown = Math.round(Math.min(100, Math.max(0, pct)));
   return (
     <Screen blobs intense top={60} bottom={40} contentStyle={{ justifyContent: 'flex-start' }}>
-      <TopBar label="The Forge" />
+      <TopBar label="The Verdict" />
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', marginTop: 4 }}>
         <div className="ly-cook-orb">
           <div className="ly-cook-ring is-spin" />
           <div className="ly-cook-pct">{shown}%</div>
         </div>
-        <div className="ly-eyebrow" style={{ marginTop: 18, justifyContent: 'center' }}><span className="ly-tick" />Cooking your proof</div>
+        <div className="ly-eyebrow" style={{ marginTop: 18, justifyContent: 'center' }}><span className="ly-tick" />Verifying your proof</div>
         <h1 className="ly-h1" style={{ marginTop: 8, fontSize: 28 }}>{quest.title}</h1>
-        <p className="ly-note" style={{ textAlign: 'center', maxWidth: 300, marginTop: 8 }}>A parallel session is cutting your clips, scoring the moments, and sealing the edit. Stay with it.</p>
+        <p className="ly-note" style={{ textAlign: 'center', maxWidth: 300, marginTop: 8 }}>The universe is watching your footage to judge whether you truly lived this quest. Stay with it.</p>
       </div>
 
       <div className="ly-bar" style={{ marginTop: 22 }}>
@@ -779,60 +779,52 @@ function CookingScreen({ jobId, quest, onVerify, onRetry, onBack }) {
 
 }
 
-// ───────────────────────── Verify (AI grade gate) ─────────────────────────
-const LY_BREAKDOWN = { promptMatch: 'Prompt match', visualQuality: 'Visual quality', pacing: 'Pacing', audienceFit: 'Audience fit' };
+// ───────────────────────── Verify (AI proof gate) ─────────────────────────
+const LY_DECISION = {
+  pass:   { label: 'VERIFIED',  glyph: '✓', color: '#3ad29f', tone: 'Proof accepted' },
+  flag:   { label: 'NEEDS REVIEW', glyph: '?', color: '#f5c451', tone: 'Sent for a human look' },
+  reject: { label: 'NOT VERIFIED', glyph: '✕', color: 'var(--primary)', tone: 'Proof rejected' },
+};
 
-function AiVerificationFlipCard({ grade }) {
-  const [flipped, setFlipped] = React.useState(false);
-  const score = Number(grade.score || 0);
-  const verdict = String(grade.verdict || 'Judged').toUpperCase();
+function VerificationVerdict({ verification }) {
+  const decision = (verification && verification.decision) || 'flag';
+  const meta = LY_DECISION[decision] || LY_DECISION.flag;
+  const confidencePct = Math.round((Number(verification && verification.confidence) || 0) * 100);
 
   return (
-    <div className="ly-verify-flip" style={{ marginTop: 10 }}>
+    <div className="ly-verify-flip" style={{ marginTop: 14 }}>
       <div className="ly-verify-flip-head">AI verification</div>
-      <button
-        type="button"
-        className="ly-verify-flip-card"
-        onClick={() => setFlipped((v) => !v)}
-        aria-pressed={flipped}
-        aria-label={flipped ? 'Show AI verification score' : 'Show AI verification details'}>
-        <div className={`ly-verify-flip-inner${flipped ? ' is-flipped' : ''}`}>
-          <div className="ly-verify-flip-side ly-verify-flip-front">
-            <div className="ly-verify-flip-score">{score.toFixed(1)}<sub>/10</sub></div>
-            <div className="ly-verify-flip-verdict">{verdict}</div>
-            <div className="ly-verify-flip-hint">tap for breakdown</div>
-          </div>
-          <div className="ly-verify-flip-side ly-verify-flip-back">
-            <div className="ly-verify-flip-bars">
-              {Object.entries(grade.breakdown || {}).map(([k, v]) => {
-                const val = Number(v) || 0;
-                return (
-                  <div className="ly-gradebar" key={k}>
-                    <span className="ly-gradebar-label">{LY_BREAKDOWN[k] || k}</span>
-                    <span className="ly-gradebar-track"><span className="ly-gradebar-fill" style={{ width: `${Math.max(0, Math.min(100, val * 10))}%` }} /></span>
-                    <span className="ly-gradebar-val">{val.toFixed(1)}</span>
-                  </div>);
-              })}
-            </div>
-            {grade.rationale && <p className="ly-verify-flip-note">{grade.rationale}</p>}
-            {(grade.gaps || []).length > 0 && (
-              <div className="ly-verify-flip-gaps">
-                {grade.gaps.map((g, i) => <div className="ly-gap" key={i}>{g}</div>)}
-              </div>
-            )}
-            <div className="ly-verify-flip-hint">tap for score</div>
+      <div className="ly-grade" style={{ marginTop: 10, borderColor: meta.color }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 30, lineHeight: 1, color: meta.color }} aria-hidden="true">{meta.glyph}</span>
+          <div>
+            <div className="ly-grade-verdict" style={{ color: meta.color }}>{meta.label}</div>
+            <div className="ly-num" style={{ marginTop: 2 }}>{confidencePct}% confidence</div>
           </div>
         </div>
-      </button>
+        {verification && verification.reason && (
+          <p className="ly-note" style={{ marginTop: 10 }}>{verification.reason}</p>
+        )}
+        {verification && verification.evidence && (
+          <p className="ly-verify-flip-note" style={{ marginTop: 8 }}><strong>Evidence:</strong> {verification.evidence}</p>
+        )}
+        {decision !== 'pass' && verification && verification.missing && (
+          <p className="ly-verify-flip-note" style={{ marginTop: 6 }}><strong>Missing:</strong> {verification.missing}</p>
+        )}
+      </div>
     </div>);
 
 }
 
-function VerifyScreen({ job, quest, onSeal, onRetry }) {
+function VerifyScreen({ job, quest, proof, onSeal, onRetry }) {
   const result = (job && job.result) || {};
-  const grade = job && job.grade;
-  // outputUrl from the server is already base-path / mount aware — use as-is.
-  const videoSrc = result.outputUrl || null;
+  const verification = (job && job.verification) || null;
+  const decision = (verification && verification.decision) || 'flag';
+  // Prefer the in-session raw proof (instant, local), fall back to the server
+  // copy (needed for shared/public views). The server URL is base-path aware.
+  const local = proofForDisplay(proof, result.proofUrl)[0] || null;
+  const mediaSrc = (local && local.src) || result.proofUrl || null;
+  const mediaKind = (local && local.kind) || result.proofKind || 'video';
 
   return (
     <Screen top={58} bottom={38} contentStyle={{ justifyContent: 'flex-start' }}>
@@ -840,37 +832,27 @@ function VerifyScreen({ job, quest, onSeal, onRetry }) {
       <div className="ly-eyebrow"><span className="ly-tick" />The universe has watched it</div>
       <h1 className="ly-h1" style={{ marginTop: 8, fontSize: 29 }}>{quest.title}</h1>
 
-      {videoSrc ? (
-        <video className="ly-verify-video" style={{ marginTop: 16 }} src={videoSrc} controls playsInline preload="metadata" />
+      {mediaSrc ? (
+        mediaKind === 'image'
+          ? <img className="ly-verify-video" style={{ marginTop: 16 }} src={mediaSrc} alt="Your proof" />
+          : <video className="ly-verify-video" style={{ marginTop: 16 }} src={mediaSrc} controls playsInline preload="metadata" />
       ) : (
         <div className="ly-verify-video" style={{ marginTop: 16, height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <span className="ly-num">Output unavailable</span>
+          <span className="ly-num">Proof unavailable</span>
         </div>
       )}
 
-      {result.totalDuration != null && (
-        <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-          <Tag>{Number(result.totalDuration).toFixed(0)}s</Tag>
-          {result.clipCount != null && <Tag>{result.clipCount} clip{result.clipCount === 1 ? '' : 's'}</Tag>}
-          <Tag>cinematic proof</Tag>
-        </div>
-      )}
-
-      {grade ? (
-        <AiVerificationFlipCard grade={grade} />
-      ) : (
-        <div className="ly-verify-flip" style={{ marginTop: 22 }}>
-          <div className="ly-verify-flip-head">AI verification</div>
-          <div className="ly-grade" style={{ marginTop: 10 }}>
-            <div className="ly-grade-verdict">Proof accepted</div>
-            <p className="ly-note" style={{ marginTop: 8 }}>The grader sat this one out, but your render survived the forge. Seal it and move on.</p>
-          </div>
-        </div>
-      )}
+      <VerificationVerdict verification={verification} />
 
       <div style={{ flex: 1, minHeight: 18 }} />
-      <Btn onClick={() => onSeal(job)} arrow style={{ marginTop: 18 }}>Seal this legend</Btn>
-      <button className="ly-link" onClick={onRetry} style={{ margin: '12px auto 0', display: 'block' }}>Try another take</button>
+      {decision === 'pass' ? (
+        <Btn onClick={() => onSeal(job)} arrow style={{ marginTop: 18 }}>Seal this legend</Btn>
+      ) : (
+        <Btn onClick={onRetry} arrow style={{ marginTop: 18 }}>Try another take</Btn>
+      )}
+      <button className="ly-link" onClick={decision === 'pass' ? onRetry : () => onSeal(job)} style={{ margin: '12px auto 0', display: 'block' }}>
+        {decision === 'pass' ? 'Try another take' : 'Keep anyway'}
+      </button>
     </Screen>);
 
 }
