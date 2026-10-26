@@ -36,7 +36,6 @@ function WelcomeScreen({ onBegin, onSignIn }) {
       <div style={{ flex: 1 }} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 13, alignItems: 'center', margin: "40px 0px 0px" }}>
         <Btn onClick={onBegin} arrow>Mint your legend</Btn>
-        <a className="ly-link" href="https://github.com/anton-abyzov/my-legend-cursor-hackathon/releases/latest" target="_blank" rel="noopener noreferrer">Download desktop app</a>
         <button className="ly-link" onClick={onSignIn}>I already walk a path</button>
       </div>
     </Screen>);
@@ -67,21 +66,33 @@ function SignInScreen({ onContinue, onBack }) {
 // ───────────────────────── Quiz ─────────────────────────
 function QuizScreen({ onComplete, onBack }) {
   const [step, setStep] = React.useState(0);
-  const [answers, setAnswers] = React.useState({});
-  const [legend, setLegend] = React.useState('');
-  const [age, setAge] = React.useState(QUIZ.find((q) => q.kind === 'slider')?.default || 26);
+  const [answers, setAnswers] = React.useState(() => {
+    const init = {};
+    QUIZ.forEach((q) => {
+      if (q.kind === 'slider') init[q.id] = q.default;
+      if (q.kind === 'multi') init[q.id] = [];
+    });
+    return init;
+  });
   const q = QUIZ[step];
+  const val = answers[q.id];
   const last = step === QUIZ.length - 1;
-  const answered = q.kind === 'slider' ? true : q.kind === 'text' ? q.optional || legend.trim() : answers[q.id] != null;
+  const answered =
+    q.kind === 'slider' ? true :
+    q.kind === 'multi' ? Array.isArray(val) && val.length > 0 :
+    q.kind === 'text' ? (q.optional || (val && val.trim())) :
+    val != null;
+  const fmt = (v) => (q.fmt ? q.fmt(v) : String(v));
 
+  const setAns = (v) => setAnswers((a) => ({ ...a, [q.id]: v }));
   const choose = (opt, idx) => setAnswers((a) => ({ ...a, [q.id]: opt.label, [q.id + '_i']: idx }));
+  const toggleMulti = (label) => setAnswers((a) => {
+    const cur = a[q.id] || [];
+    return { ...a, [q.id]: cur.includes(label) ? cur.filter((x) => x !== label) : [...cur, label] };
+  });
   const next = () => {
     if (!answered) return;
-    if (last) {
-      const final = { ...answers, age };
-      if (legend.trim()) final.legend = legend.trim();
-      onComplete(final);
-    } else setStep((s) => s + 1);
+    if (last) onComplete(answers); else setStep((s) => s + 1);
   };
   const back = () => {if (step === 0) onBack && onBack();else setStep((s) => s - 1);};
 
@@ -102,13 +113,25 @@ function QuizScreen({ onComplete, onBack }) {
           {q.kind === 'slider' &&
           <div style={{ marginTop: 14 }}>
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'center', gap: 8, marginBottom: 22 }}>
-                <span style={{ fontFamily: 'var(--heading)', fontWeight: 400, fontSize: 92, lineHeight: 0.9, letterSpacing: '0.01em', color: 'var(--ink)' }}>{age}</span>
+                <span style={{ fontFamily: 'var(--heading)', fontWeight: 400, fontSize: 84, lineHeight: 0.9, letterSpacing: '0.01em', color: 'var(--ink)' }}>{fmt(val)}</span>
                 <span className="ly-num" style={{ fontSize: 14 }}>{q.unit}</span>
               </div>
-              <input className="ly-slider" type="range" min={q.min} max={q.max} value={age} onChange={(e) => setAge(+e.target.value)} />
+              <input className="ly-slider" type="range" min={q.min} max={q.max} step={q.step || 1} value={val} onChange={(e) => setAns(+e.target.value)} />
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10 }}>
-                <span className="ly-num">{q.min}</span><span className="ly-num">{q.max}</span>
+                <span className="ly-num">{fmt(q.min)}</span><span className="ly-num">{fmt(q.max)}</span>
               </div>
+            </div>
+          }
+          {q.kind === 'multi' &&
+          <div className="ly-multi">
+              {q.options.map((opt, idx) => {
+              const sel = (val || []).includes(opt.label);
+              return (
+                <button key={idx} className={`ly-mopt${sel ? ' is-sel' : ''}`} onClick={() => toggleMulti(opt.label)}>
+                  <span className={`ly-checkbox${sel ? ' is-sel' : ''}`}>{sel && <Check />}</span>
+                  <span>{opt.label}</span>
+                </button>);
+            })}
             </div>
           }
           {q.kind === 'choice' && q.options.map((opt, idx) => {
@@ -134,7 +157,7 @@ function QuizScreen({ onComplete, onBack }) {
           {q.kind === 'text' &&
           <div className="ly-field">
               <span className="ly-field-caret">&gt;</span>
-              <input className="ly-input" autoFocus value={legend} placeholder={q.placeholder} onChange={(e) => setLegend(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && next()} />
+              <input className="ly-input" autoFocus value={val || ''} placeholder={q.placeholder} onChange={(e) => setAns(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && next()} />
             </div>
           }
         </div>
@@ -435,7 +458,7 @@ function ShareScreen({ quest, tagline, completed, proof, outputUrl, jobId, publi
 }
 
 // ───────────────────────── Journal (hub) ─────────────────────────
-function JournalScreen({ tagline, completed, active, onSeek, onOpenActive }) {
+function JournalScreen({ tagline, completed, active, onSeek, onOpenActive, onOpenMap }) {
   return (
     <Screen blobs top={62} bottom={92} contentStyle={{ justifyContent: 'flex-start' }}>
       <div className="ly-eyebrow"><span className="ly-tick" />Your Path</div>
@@ -452,7 +475,16 @@ function JournalScreen({ tagline, completed, active, onSeek, onOpenActive }) {
         </div>
       </div>
 
-      <div className="ly-eyebrow" style={{ marginTop: 28 }}>Your Constellation</div>
+      <button className="ly-mapcard" onClick={onOpenMap}>
+        <span>
+          <span className="ly-eyebrow" style={{ margin: 0, color: 'var(--primary)' }}>The Legend Map</span>
+          <span className="ly-node-title" style={{ display: 'block', marginTop: 6 }}>{completed.length} stars · ∞ ahead</span>
+          <span className="ly-note" style={{ display: 'block', margin: '5px 0 0', fontSize: 12.5 }}>See the endless path your legend is writing.</span>
+        </span>
+        <span className="ly-mapcard-arrow">→</span>
+      </button>
+
+      <div className="ly-eyebrow" style={{ marginTop: 26 }}>Recent Constellation</div>
       <div className="ly-timeline">
         {active &&
         <div className="ly-node" onClick={onOpenActive} style={{ cursor: 'pointer' }}>
@@ -489,6 +521,75 @@ function JournalScreen({ tagline, completed, active, onSeek, onOpenActive }) {
 
 }
 
+// ───────────────────────── The Legend Map ─────────────────────────
+function MapScreen({ completed, active, onBack, onSeek, onOpenActive }) {
+  const per = 5;
+  const lived = completed.length;
+  const idx = Math.floor(lived / per);
+  const inThis = lived % per;
+  const NAMES = ['The Awakening', 'The Wandering', 'The Becoming', 'The Reckoning', 'The Ascension', 'The Eternal Return'];
+  const ROM = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
+  const rom = (n) => ROM[n] || String(n + 1);
+  return (
+    <Screen top={60} bottom={40} contentStyle={{ justifyContent: 'flex-start' }}>
+      <TopBar onBack={onBack} label="The Legend Map" />
+      <div style={{ textAlign: 'center' }}>
+        <h1 className="ly-h1" style={{ fontSize: 32 }}>The map of{'\n'}your legend</h1>
+        <p className="ly-note" style={{ maxWidth: 300, margin: '10px auto 0', textAlign: 'center' }}>Every quest you live extends the path. It has no end, a universe inside another universe.</p>
+      </div>
+
+      <div className="ly-map-meter">
+        <div className="ly-eyebrow" style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <span>Constellation {rom(idx)} · {NAMES[idx % NAMES.length]}</span>
+          <span>{inThis}/{per}</span>
+        </div>
+        <div className="ly-map-bar"><span style={{ width: `${(inThis / per) * 100}%` }} /></div>
+        <div className="ly-num" style={{ display: 'block', marginTop: 9, color: 'var(--ink-faint)' }}>{lived} STARS LIVED · ∞ AHEAD</div>
+      </div>
+
+      <div className="ly-map">
+        <div className="ly-map-inf">∞ the path keeps writing itself</div>
+        {[0, 1, 2].map((k) =>
+          <div className="ly-map-row" key={'f' + k} style={{ opacity: 0.55 - k * 0.15 }}>
+            <span className="ly-map-bead is-locked">?</span>
+            <span className={`ly-map-flag ${k % 2 ? 'right' : 'left'}`}><span className="ly-map-flag-t" style={{ color: 'var(--ink-soft)' }}>A quest not yet revealed</span></span>
+          </div>
+        )}
+        <div className="ly-map-row">
+          <span className="ly-map-bead is-active" onClick={active ? onOpenActive : onSeek}>{active ? <Sigil style={{ fontSize: 17, color: '#000' }}>{active.sigil}</Sigil> : <b style={{ color: '#000' }}>+</b>}</span>
+          <span className="ly-map-flag left is-here" onClick={active ? onOpenActive : onSeek}>
+            <span className="ly-map-here">You are here</span>
+            <span className="ly-map-flag-t">{active ? active.title : 'Seek your next quest'}</span>
+          </span>
+        </div>
+        {completed.map((c, i) => {
+          const starNo = lived - i;
+          const milestone = starNo % per === 0;
+          return (
+            <React.Fragment key={c.id + i}>
+              <div className="ly-map-row">
+                <span className="ly-map-bead is-lived"><Sigil style={{ fontSize: 15, color: 'var(--primary)' }}>{c.sigil}</Sigil></span>
+                <span className={`ly-map-flag ${i % 2 ? 'left' : 'right'}`}>
+                  <span className="ly-map-flag-t">{c.title}</span>
+                  <span className="ly-num">{c.date}</span>
+                </span>
+              </div>
+              {milestone &&
+                <div className="ly-map-mile"><span className="ly-map-mbead">{rom(starNo / per - 1)}</span><span className="ly-map-mname">{NAMES[(starNo / per - 1) % NAMES.length]}</span></div>
+              }
+            </React.Fragment>);
+        })}
+        <div className="ly-map-row">
+          <span className="ly-map-bead is-origin"><Compass size={20} primary="var(--primary)" ink="var(--ink)" ring="var(--secondary)" /></span>
+          <span className="ly-map-flag right"><span className="ly-map-flag-t" style={{ color: 'var(--ink-soft)' }}>Where it began</span></span>
+        </div>
+      </div>
+
+      <div style={{ height: 10 }} />
+      <Btn onClick={onSeek} arrow>Seek a new quest</Btn>
+    </Screen>);
+}
+
 // ═══════════════════════════════════════════════════════════════
 //  Legend render pipeline — Upload → Cooking → Verify (AI grade)
 // ═══════════════════════════════════════════════════════════════
@@ -506,22 +607,22 @@ function lyBytes(n) {
 
 // Map a hardcoded Legend quest + quiz answers onto the server's job body.
 function lyPersona(answers) {
-  const age = Number(answers && answers.age);
-  if (!age) return 'Gen Z';
-  if (age <= 27) return 'Gen Z';
-  if (age <= 43) return 'Millennial';
-  return 'Gen X';
+  const budget = answers && answers.budget != null ? `$${answers.budget}${Number(answers.budget) >= 50 ? '+' : ''}` : 'any budget';
+  const time = answers && answers.time != null ? `${answers.time}${Number(answers.time) >= 3 ? '+' : ''}h` : 'open time';
+  const transport = Array.isArray(answers && answers.transport) && answers.transport.length ? answers.transport.join('/') : 'any transport';
+  return `Traveler: budget ${budget}, time ${time}, transport ${transport}`;
 }
 function lyQuestBody(quest, answers) {
   const fd = new FormData();
+  const constraints = lyPersona(answers);
   fd.append('title', quest.title);
   fd.append('sideQuest', quest.title);
   fd.append('questSlug', quest.id);
-  fd.append('persona', lyPersona(answers));
+  fd.append('persona', constraints);
   fd.append('style', 'cinematic proof');
   fd.append('aspect', 'vertical');
   fd.append('targetDuration', '18');
-  fd.append('prompt', `Prove this side quest was lived: ${quest.essence} Select the strongest audible moments, cut silence, and end on a payoff frame.`);
+  fd.append('prompt', `Prove this side quest was lived: ${quest.essence} Traveler constraints: ${constraints}. Select the strongest audible moments, cut silence, and end on a payoff frame.`);
   const diff = { 1: 'easy', 2: 'medium', 3: 'hard' }[quest.scale];
   if (diff) fd.append('questDifficulty', diff);
   fd.append('questXp', String((quest.scale || 0) * 100));
@@ -875,4 +976,4 @@ function VerifyScreen({ job, quest, onSeal, onRetry }) {
 
 }
 
-Object.assign(window, { WelcomeScreen, SignInScreen, QuizScreen, SeekScreen, RevealScreen, QuestScreen, ProofScreen, CompleteScreen, ShareScreen, JournalScreen, TopBar, UploadScreen, CookingScreen, VerifyScreen, lyApiPath, lySharePageUrl, proofForDisplay });
+Object.assign(window, { WelcomeScreen, SignInScreen, QuizScreen, SeekScreen, RevealScreen, QuestScreen, ProofScreen, CompleteScreen, ShareScreen, JournalScreen, MapScreen, TopBar, UploadScreen, CookingScreen, VerifyScreen, lyApiPath, lySharePageUrl, proofForDisplay });
