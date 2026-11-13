@@ -26,9 +26,29 @@
     font-family: 'Space Grotesk', system-ui, sans-serif;
     color: #fff;
   }
+  .ly-shell { min-height: 100vh; min-height: 100dvh; width: 100%; display: flex; align-items: center; justify-content: center; }
+  .ly-shell-desktop { background: radial-gradient(120% 120% at 50% 0%, #2a2350 0%, #0e1018 72%); padding: 24px; box-sizing: border-box; }
+  .ly-shell-mobile { background: #181c2e; align-items: stretch; }
+
+  .ly-fullbleed { width: 100%; min-height: 100dvh; display: flex; flex-direction: column; overflow-x: hidden; position: relative; background: var(--bg); -webkit-overflow-scrolling: touch; }
+  .ly-fb-status { position: absolute; top: 0; left: 0; right: 0; z-index: 50; }
+  .ly-fb-frame { flex: 1 0 auto; display: flex; flex-direction: column; max-width: 540px; width: 100%; margin: 0 auto; position: relative; }
+
+  .ly-desk-window { width: min(880px, 95vw); height: min(900px, 92vh); display: flex; border-radius: 28px; overflow: hidden; box-shadow: 0 40px 110px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.07); }
+  .ly-desk-solo { width: 460px; max-width: 95vw; height: min(900px, 92vh); border-radius: 32px; overflow: hidden; position: relative; display: flex; flex-direction: column; background: var(--bg); box-shadow: 0 40px 110px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.07); }
+  .ly-desk-side { width: 248px; flex-shrink: 0; background: rgba(0,0,0,0.24); border-right: 1px solid var(--line); display: flex; flex-direction: column; padding: 32px 24px; }
+  .ly-desk-logo { width: 150px; height: auto; filter: drop-shadow(0 0 18px var(--glow)); }
+  .ly-desk-nav { display: flex; flex-direction: column; gap: 6px; margin-top: 44px; }
+  .ly-desk-navbtn { text-align: left; font-family: var(--mono); font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-soft); background: transparent; border: none; border-radius: 10px; padding: 13px 14px; cursor: pointer; transition: all .18s ease; }
+  .ly-desk-navbtn:hover { color: var(--ink); background: rgba(255,255,255,0.05); }
+  .ly-desk-navbtn.is-on { color: #000; background: var(--primary); box-shadow: 0 0 18px var(--glow); }
+  .ly-desk-foot { margin-top: auto; }
+  .ly-desk-foot-n { font-family: var(--heading); font-size: 44px; line-height: 0.86; color: var(--primary); text-shadow: 0 0 16px var(--glow); }
+  .ly-desk-main { flex: 1; position: relative; overflow-y: auto; background: var(--bg); }
+  .ly-desk-frame { max-width: 480px; width: 100%; margin: 0 auto; min-height: 100%; display: flex; flex-direction: column; position: relative; }
 
   /* ── screen shell ── */
-  .ly-screen { min-height: 100%; position: relative; background: var(--bg); color: var(--ink); font-family: var(--body); overflow: hidden; }
+  .ly-screen { min-height: 100%; flex: 1 0 auto; position: relative; background: var(--bg); color: var(--ink); font-family: var(--body); overflow: hidden; }
   .ly-screen::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 320px; background: radial-gradient(120% 80% at 50% -20%, color-mix(in oklab, var(--primary), transparent 80%), transparent 70%); pointer-events: none; z-index: 0; }
 
   /* starfield */
@@ -80,6 +100,12 @@
   .ly-binary { flex: 1; display: flex; align-items: center; justify-content: center; font-family: var(--heading); font-weight: 400; text-transform: uppercase; letter-spacing: 0.03em; font-size: 32px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 36px 18px; cursor: pointer; transition: all .18s ease; }
   .ly-binary:hover { border-color: var(--line-strong); background: var(--surface-alt); }
   .ly-binary.is-sel { border-color: var(--primary); background: var(--surface-alt); color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary), 0 0 22px color-mix(in oklab, var(--glow), transparent 40%); }
+  .ly-multi { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+  .ly-mopt { display: flex; align-items: center; gap: 11px; font-family: var(--body); font-size: 16px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 16px; cursor: pointer; transition: all .18s ease; text-align: left; }
+  .ly-mopt:hover { border-color: var(--line-strong); background: var(--surface-alt); }
+  .ly-mopt.is-sel { border-color: var(--primary); background: var(--surface-alt); box-shadow: inset 0 0 0 1px var(--primary), 0 0 18px color-mix(in oklab, var(--glow), transparent 52%); }
+  .ly-checkbox { width: 22px; height: 22px; border-radius: 6px; border: 1.6px solid var(--line-strong); display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all .18s; }
+  .ly-checkbox.is-sel { background: var(--primary); border-color: var(--primary); }
 
   .ly-tag { display: inline-flex; align-items: center; font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-soft); background: var(--surface); border: 1px solid var(--line); border-radius: 9999px; padding: 7px 13px; }
   .ly-tag.is-active { background: var(--highlight); color: #000; border-color: transparent; }
@@ -189,6 +215,33 @@
   .ly-node-title { font-family: var(--heading); font-weight: 400; text-transform: uppercase; font-size: 18px; letter-spacing: 0.022em; color: var(--ink); margin-top: 4px; line-height: 1.0; }
   .ly-dock { position: sticky; bottom: 0; margin: 10px -22px -38px; padding: 14px 22px 38px; background: linear-gradient(to top, var(--bg) 62%, transparent); }
 
+  /* ── legend map ── */
+  .ly-mapcard { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; text-align: left; margin-top: 16px; background: var(--surface); border: 1px solid var(--primary); border-radius: 16px; padding: 16px 18px; cursor: pointer; box-shadow: 0 0 22px color-mix(in oklab, var(--glow), transparent 66%); transition: transform .12s ease; }
+  .ly-mapcard:active { transform: scale(.99); }
+  .ly-mapcard-arrow { font-family: var(--body); font-size: 22px; color: var(--primary); flex-shrink: 0; }
+  .ly-map-meter { margin-top: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+  .ly-map-bar { height: 6px; border-radius: 999px; background: var(--line-strong); margin-top: 9px; overflow: hidden; }
+  .ly-map-bar > span { display: block; height: 100%; background: var(--primary); box-shadow: 0 0 12px var(--glow); border-radius: 999px; transition: width .5s; }
+  .ly-map { position: relative; margin-top: 24px; padding-top: 6px; }
+  .ly-map::before { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 0; border-left: 1.6px dashed rgba(255,255,255,0.16); transform: translateX(-50%); -webkit-mask-image: linear-gradient(to bottom, transparent, #000 6%, #000 95%, transparent); mask-image: linear-gradient(to bottom, transparent, #000 6%, #000 95%, transparent); }
+  .ly-map-inf { text-align: center; font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-faint); margin-bottom: 4px; }
+  .ly-map-row { position: relative; height: 82px; display: flex; align-items: center; justify-content: center; }
+  .ly-map-bead { width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; z-index: 2; background: var(--surface-solid); border: 1.5px solid var(--line-strong); flex-shrink: 0; font-family: var(--mono); font-weight: 700; color: var(--ink-faint); }
+  .ly-map-bead.is-lived { border-color: var(--primary); box-shadow: 0 0 16px var(--glow); }
+  .ly-map-bead.is-active { background: var(--primary); border-color: var(--primary); cursor: pointer; box-shadow: 0 0 0 6px color-mix(in oklab, var(--glow), transparent 72%), 0 0 28px var(--glow); animation: ly-map-pulse 2.2s ease-in-out infinite; }
+  .ly-map-bead.is-locked { border-style: dashed; background: transparent; }
+  .ly-map-bead.is-origin { border-color: var(--secondary); }
+  .ly-map-flag { position: absolute; top: 50%; transform: translateY(-50%); width: 40%; display: flex; flex-direction: column; gap: 3px; }
+  .ly-map-flag.left { right: calc(50% + 32px); text-align: right; align-items: flex-end; }
+  .ly-map-flag.right { left: calc(50% + 32px); text-align: left; align-items: flex-start; }
+  .ly-map-flag.is-here { cursor: pointer; }
+  .ly-map-flag-t { font-family: var(--heading); font-weight: 400; text-transform: uppercase; font-size: 16px; letter-spacing: 0.02em; color: var(--ink); line-height: 1.02; }
+  .ly-map-here { font-family: var(--mono); font-size: 9.5px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--primary); }
+  .ly-map-mile { position: relative; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 16px 0; z-index: 2; }
+  .ly-map-mbead { width: 50px; height: 50px; border-radius: 50%; background: var(--surface-solid); border: 1.5px solid var(--secondary); display: flex; align-items: center; justify-content: center; font-family: var(--heading); font-size: 22px; color: var(--secondary); box-shadow: 0 0 22px color-mix(in oklab, var(--secondary), transparent 62%); }
+  .ly-map-mname { font-family: var(--heading); text-transform: uppercase; font-size: 17px; letter-spacing: 0.04em; color: var(--ink); }
+  @keyframes ly-map-pulse { 0%, 100% { box-shadow: 0 0 0 5px color-mix(in oklab, var(--glow), transparent 74%), 0 0 24px var(--glow); } 50% { box-shadow: 0 0 0 11px color-mix(in oklab, var(--glow), transparent 88%), 0 0 34px var(--glow); } }
+
   /* ── die ── */
   .ly-die { width: 112px; height: 112px; position: relative; transform-style: preserve-3d; }
   .ly-die-idle { transition: transform 2s cubic-bezier(.2,.7,.2,1); }
@@ -214,7 +267,7 @@
   .ly-spin { animation: ly-spin 64s linear infinite; transform-origin: 50% 50%; }
   .ly-float { animation: ly-float 4s ease-in-out infinite; }
   .ly-mote { position: absolute; bottom: 90px; width: 5px; height: 5px; border-radius: 50%; background: var(--primary); box-shadow: 0 0 8px var(--glow); opacity: 0; animation: ly-mote 4.2s ease-in infinite; }
-  .ly-route { height: 100%; }
+  .ly-route { flex: 1 0 auto; display: flex; flex-direction: column; }
   .ly-step-in { animation: ly-step .42s ease both; }
   .ly-reveal-in { animation: ly-reveal .72s cubic-bezier(.2,.7,.2,1) both; }
   .ly-fade-in { animation: ly-fade .5s ease both; }
@@ -430,11 +483,18 @@ function App() {
     return () => { cancelled = true; };
   }, []);
 
-  const [wide, setWide] = React.useState(typeof window !== 'undefined' ? window.innerWidth >= 980 : true);
+  const [view, setView] = React.useState(() => ({
+    desktop: typeof window !== 'undefined' ? window.innerWidth >= 880 && window.innerHeight >= 600 : true,
+  }));
   React.useEffect(() => {
-    const fit = () => setWide(window.innerWidth >= 980);
+    const fit = () => {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      setView({ desktop: w >= 880 && h >= 600 });
+    };
     fit(); window.addEventListener('resize', fit); return () => window.removeEventListener('resize', fit);
   }, []);
+  const { desktop } = view;
 
   const [toast, toastNode] = useToast();
   const completedIds = st.completed.map(c => c.id);
@@ -467,6 +527,7 @@ function App() {
     setSt(s => ({ ...s, completed: [c, ...s.completed.filter(x => x.id !== c.id)], active: null, proof: proof || null, screen: 'complete' }));
   };
   const onOpenActive = () => set({ quest: st.active, jobId: null, job: null, screen: 'upload' });
+  const onOpenMap = () => go('map');
   const restart = () => { try { localStorage.removeItem(STORE); } catch (e) {} setSt({ ...DEFAULT_STATE }); };
 
   const exclude = [...completedIds, st.quest ? st.quest.id : null].filter(Boolean);
@@ -501,27 +562,58 @@ function App() {
     case 'proof': screen = <ProofScreen quest={st.quest} onSubmit={onSubmitProof} onBack={() => go('journal')} />; break;
     case 'complete': screen = <CompleteScreen quest={st.quest} tagline={tagline} proof={st.proof} outputUrl={shareOutputUrl} onShare={() => go('share')} onJournal={() => go('journal')} />; break;
     case 'share': screen = <ShareScreen quest={st.quest} tagline={tagline} completed={st.completed.length} proof={st.proof} outputUrl={shareOutputUrl} jobId={shareJobId} publicView={st.publicShare} toast={toast} onBack={() => go(st.completed.length && !st.publicShare ? 'journal' : 'complete')} />; break;
-    case 'journal': screen = <JournalScreen tagline={tagline} completed={st.completed} active={st.active} onSeek={() => go('seek')} onOpenActive={onOpenActive} />; break;
+    case 'journal': screen = <JournalScreen tagline={tagline} completed={st.completed} active={st.active} onSeek={() => go('seek')} onOpenActive={onOpenActive} onOpenMap={onOpenMap} />; break;
+    case 'map': screen = <MapScreen completed={st.completed} active={st.active} onBack={() => go('journal')} onSeek={() => go('seek')} onOpenActive={onOpenActive} />; break;
     default: screen = <WelcomeScreen onBegin={onBegin} onSignIn={onSignIn} />;
   }
 
+  const cssVars = (() => { const v = buildVars(pal, typ); const { height, ...rest } = v; return rest; })();
+  const onboarding = st.screen === 'welcome' || st.screen === 'quiz' || st.screen === 'signin';
+  const activeNav = st.screen === 'map' ? 'map' : st.screen === 'journal' ? 'journal'
+    : (['seek', 'reveal', 'proof', 'upload', 'cooking', 'verify', 'complete', 'share'].includes(st.screen) ? 'seek' : null);
+  const routeNode = <React.Fragment><div className="ly-route" key={st.screen}>{screen}</div>{toastNode}</React.Fragment>;
+
+  let body;
+  if (desktop && !onboarding) {
+    body = (
+      <div className="ly-desk-window" style={cssVars}>
+        <aside className="ly-desk-side">
+          <img src="assets/legend-logo.png" className="ly-desk-logo" alt="Legend" />
+          <nav className="ly-desk-nav">
+            <button className={`ly-desk-navbtn${activeNav === 'seek' ? ' is-on' : ''}`} onClick={() => go('seek')}>Seek a quest</button>
+            <button className={`ly-desk-navbtn${activeNav === 'map' ? ' is-on' : ''}`} onClick={() => go('map')}>The Map</button>
+            <button className={`ly-desk-navbtn${activeNav === 'journal' ? ' is-on' : ''}`} onClick={() => go('journal')}>Your Path</button>
+          </nav>
+          <div className="ly-desk-foot">
+            <div className="ly-desk-foot-n">{String(st.completed.length).padStart(2, '0')}</div>
+            <div className="ly-eyebrow">Stars lived</div>
+          </div>
+        </aside>
+        <main className="ly-desk-main"><div className="ly-desk-frame">{routeNode}</div></main>
+      </div>
+    );
+  } else if (desktop) {
+    body = <div className="ly-desk-solo" style={cssVars}>{routeNode}</div>;
+  } else {
+    body = (
+      <div className="ly-fullbleed" style={cssVars}>
+        <div className="ly-fb-status"><IOSStatusBar dark={true} /></div>
+        <div className="ly-fb-frame">{routeNode}</div>
+      </div>
+    );
+  }
+
   return (
-    <div className="lx-app" style={buildVars(pal, typ)}>
-      {wide && <BrandRail screen={st.screen} />}
-      <main className="lx-stage">
-        <div className="lx-card">
-          <div className="ly-route" key={st.screen}>{screen}</div>
-          {toastNode}
-        </div>
-      </main>
+    <div className={`ly-shell ly-shell-${desktop ? 'desktop' : 'mobile'}`}>
+      {body}
 
       <TweaksPanel title="Tweaks">
         <TweakSection label="World / mood" />
         <TweakRadio label="Palette" value={t.palette} options={Object.keys(PALETTES)} onChange={v => setTweak('palette', v)} />
         <TweakSection label="Typography" />
         <TweakRadio label="Wordmark" value={t.type} options={Object.keys(TYPES)} onChange={v => setTweak('type', v)} />
-        <TweakSection label="The omen ritual" />
-        <TweakRadio label="Trigger" value={t.trigger} options={['Dice', 'Card', 'Phone']} onChange={v => setTweak('trigger', v)} />
+        <TweakSection label="The trigger ritual" />
+        <TweakRadio label="Kind" value={t.trigger} options={['Dice', 'Card', 'Phone']} onChange={v => setTweak('trigger', v)} />
         <TweakSection label="Story" />
         <TweakButton label="Restart from the beginning" onClick={restart} />
       </TweaksPanel>

@@ -1,6 +1,6 @@
 # Legend — HyperFrames · 2-Minute Demo Script
 
-**Format:** horizontal / landscape screen recording (~2:00). Hold the phone in landscape, or screen-record the desktop showcase at <http://localhost:4317> (the wide layout shows the brand rail + phone stage).
+**Format:** horizontal / landscape screen recording (~2:00). For the hosted flow, start at <https://legend.anymodel.dev/> and open the live demo at <https://demo.legend.anymodel.dev/>. For local capture, use <http://localhost:4317> and <http://localhost:4317/landing>.
 
 **Before you hit record:** start the app (`npm run web`), open <http://localhost:4317>, and have 1–3 short raw clips ready to upload. If you want a real AI score on camera, set `LEGEND_GEMINI_API_KEY`; otherwise the heuristic grader still returns a real number.
 
@@ -38,8 +38,8 @@
 
 | | |
 | --- | --- |
-| **ACTION** | Click **Mint your legend**. Move through the five **Trials** questions: drag the age slider, tap a choice or two, tap **Continue**, then **Consult the universe**. On **The Omen** screen, trigger the ritual (cast the die / draw the card). A quest is revealed on **The Quest** screen — call out its title and the scale meter. |
-| **VO** | "Five quick questions — age, fears, what you love. Then the omen ritual reads you and answers." *(quest appears)* "Tonight it picked **'[quest title]'**. I tap **Accept the quest**." |
+| **ACTION** | Click **Mint your legend**. Move through the three **Trials** questions: set budget, set time, pick transport, then **Consult the universe**. On **The Omen** screen, trigger the ritual (cast the die / draw the card). A quest is revealed on **The Quest** screen — call out its title and the scale meter. |
+| **VO** | "Three quick constraints — budget, time, and how you're moving. Then the omen ritual answers." *(quest appears)* "Tonight it picked **'[quest title]'**. I tap **Accept the quest**." |
 
 **ACTION:** Tap **Accept the quest**.
 
@@ -68,7 +68,7 @@
 
 ## 1:50–2:00 — Closer / CTA
 
-**ACTION:** Tap **Seal this legend** → the **Complete** screen with the sigil, then a beat on the **Journal** constellation of lived quests.
+**ACTION:** Tap **Seal this legend** → the **Complete** screen with the sigil, then a beat on the **Journal** and **Legend Map**.
 
 > **VO:** "Seal it, and the quest becomes a star in your constellation. Quest in, graded proof out — that's Legend. Take a side. Live a legend."
 
@@ -80,6 +80,6 @@
 
 - **Mint your legend** → start · **Consult the universe** → finish quiz · **Accept the quest** → go to upload
 - **Cook my proof** → start render · **Seal this legend** → finish
-- URLs: showcase `http://localhost:4317`, admin Quest Builder `http://localhost:4317/builder`
-- Screen names in order: Welcome → Trials (quiz) → The Omen → The Quest (reveal) → Proof of Legend (upload) → The Forge (cooking) → The Verdict (AI grade) → Complete → Journal
+- URLs: production landing `https://legend.anymodel.dev`, production demo `https://demo.legend.anymodel.dev`, local showcase `http://localhost:4317`, admin Quest Builder `http://localhost:4317/builder`
+- Screen names in order: Welcome → Trials (quiz) → The Omen → The Quest (reveal) → Proof of Legend (upload) → The Forge (cooking) → The Verdict (AI grade) → Complete → Journal → Legend Map
 - The score is a real 0–10 AI grade (`src/engine/questGrader.js`); say whatever number actually appears on screen.

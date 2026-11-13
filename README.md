@@ -10,7 +10,7 @@ Built at a Cursor hackathon. The spark: short-form "side quest" challenges are e
 
 The hosted web app (`src/web/public/legend/`) is a guided, sequential ritual. End to end:
 
-1. **Answer the questions / get your quest.** A five-question "Trials" quiz (age, fears, what you love) feeds an "Omen" ritual — cast a die, draw a card, or take the signal. The ritual reveals one provable side quest (`pickQuest()` in `src/web/public/legend/leyend-data.jsx`, personalized by your answers).
+1. **Answer the questions / get your quest.** A three-question "Trials" quiz (budget, time, transport) feeds an "Omen" ritual — cast a die, draw a card, or take the signal. The ritual reveals one provable side quest (`pickQuest()` in `src/web/public/legend/leyend-data.jsx`) and passes your constraints into the render brief.
 2. **Upload your video.** Accept the quest, then drop one or many raw clips on the **Proof of Legend** screen. The browser posts them to `POST /api/quests` (`src/web/server.js`), which hashes every file (SHA-1), skips duplicates, stores them (Cloudflare R2 or local disk), and kicks off an async render job.
 3. **The pieces get combined (render).** `runJob()` calls `createSideQuestProject()` (`src/engine/sideQuestProject.js`): FFmpeg probes each clip, detects silent spans and keeps the audible moments, pre-concats them into one stable track, generates a HyperFrames composition (`DESIGN.md` + `index.html` with GSAP captions and chrome), runs `hyperframes lint`, and renders the final MP4 with `hyperframes render`. The **Forge** screen polls `GET /api/quests/:id` and shows live stages (Ingest → Plan → Render → Judge) and a tail of the render log.
 4. **AI verification + score.** Once the MP4 exists, `gradeQuest()` (`src/engine/questGrader.js`) scores it **0–10** against the original request, with four sub-scores (prompt match, visual quality, pacing, audience fit), a one-word verdict, and a written rationale. The **Verdict** screen plays the rendered video and shows the score front and center. Seal it and it joins your constellation in the Journal.
@@ -19,7 +19,10 @@ The number is a genuine AI judgment, not a fixed value: with a Gemini key the gr
 
 ### Two surfaces
 
-- **`/` — the Legend showcase** (default). The cinematic, story-driven flow described above. Uses a curated set of narrative quests and the same upload → render → grade pipeline. Landscape-aware: a desktop brand rail with constellation progress beside a framed "phone" stage; collapses to full-bleed mobile screens under 980px.
+- **Production landing:** <https://legend.anymodel.dev/>
+- **Production interactive demo:** <https://demo.legend.anymodel.dev/>
+- **`/` — the Legend showcase** (default). The cinematic, story-driven flow described above. Uses a curated set of narrative quests and the same upload → render → grade pipeline. Desktop uses a focused app window with map/journal navigation after onboarding; mobile stays full-bleed.
+- **`/landing` — the launch page**. A promotion-ready waitlist page with quest-video collage art, email capture, and startup-style positioning.
 - **`/builder` — the Quest Builder** (admin/dev tool). The raw control panel: auth-gated APIs, the full **561-quest** catalog with smart recommendations, manual prompt/persona/format controls, job history, and grade analytics.
 
 ## Features
@@ -59,6 +62,7 @@ npm run web
 ```
 
 - Showcase: <http://localhost:4317>
+- Landing page: <http://localhost:4317/landing>
 - Quest Builder (admin): <http://localhost:4317/builder>
 
 Runs fully offline with no keys: open dev auth, local-disk storage, the committed `data/side-quests.json` catalog, and the deterministic heuristic grader.

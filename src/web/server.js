@@ -596,6 +596,11 @@ function sendApp(req, res) {
   sendHtmlFile(path.join("legend", "index.html"), res);
 }
 
+// Launch / waitlist surface for promotion and demo intros.
+function sendLanding(req, res) {
+  sendHtmlFile(path.join("legend", "landing.html"), res);
+}
+
 // Secondary tool: the Quest Builder admin UI, demoted to /builder.
 function sendBuilder(req, res) {
   sendHtmlFile("index.html", res);
@@ -903,9 +908,14 @@ router.post("/api/quests", allowGuest, upload.array("videos", 24), async (req, r
 router.use("/assets", express.static(PUBLIC_ROOT, { immutable: false, maxAge: "1m" }));
 router.use("/outputs", express.static(RUNS_ROOT, { fallthrough: false }));
 router.get("/", sendApp);
+router.get("/landing", sendLanding);
 router.get("/builder", sendBuilder);
 router.use((req, res, next) => {
   if (req.method === "GET" && !req.path.startsWith("/api/") && !req.path.startsWith("/outputs/") && !req.path.startsWith("/assets/")) {
+    if (req.path === "/landing" || req.path.startsWith("/landing/")) {
+      sendLanding(req, res);
+      return;
+    }
     if (req.path === "/builder" || req.path.startsWith("/builder/")) {
       sendBuilder(req, res);
       return;

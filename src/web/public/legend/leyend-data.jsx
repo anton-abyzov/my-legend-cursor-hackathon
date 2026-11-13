@@ -36,33 +36,25 @@ const TYPES = {
 };
 
 // ─────────────────────────────────────────────────────────────
-// Onboarding quiz — Age · Gender · Heights · Love · Your legend
+// Onboarding quiz — Budget · Time frame · Transport
 // ─────────────────────────────────────────────────────────────
 const QUIZ = [
   {
-    id: 'age', kind: 'slider', prompt: 'Your age',
-    note: 'How many cycles have you run?',
-    min: 16, max: 80, default: 26, unit: 'YRS',
+    id: 'budget', kind: 'slider', prompt: 'Budget', unit: 'USD',
+    note: 'How much are you willing to spend on this quest?',
+    min: 0, max: 50, step: 5, default: 10,
+    fmt: (v) => (v >= 50 ? '$50+' : '$' + v),
   },
   {
-    id: 'gender', kind: 'choice', prompt: 'Your gender',
-    note: 'Identity is yours to declare.',
-    options: [{ label: 'Woman' }, { label: 'Man' }, { label: 'Non-binary' }, { label: 'I decline to say' }],
+    id: 'time', kind: 'slider', prompt: 'Time frame', unit: 'HOURS',
+    note: 'How long can the quest take?',
+    min: 0.5, max: 3, step: 0.5, default: 1,
+    fmt: (v) => (v >= 3 ? '3+' : v === 0.5 ? '.5' : String(v)),
   },
   {
-    id: 'heights', kind: 'binary', prompt: 'Are you afraid of heights?',
-    note: 'Be honest. No one is watching.',
-    options: [{ label: 'Yes' }, { label: 'No' }],
-  },
-  {
-    id: 'love', kind: 'binary', prompt: 'Are you afraid to love?',
-    note: 'Every legend guards a heart.',
-    options: [{ label: 'Yes' }, { label: 'No' }],
-  },
-  {
-    id: 'legend', kind: 'text', optional: true, prompt: 'What is your legend?',
-    note: 'Optional. Speak it, or leave it unwritten.',
-    placeholder: 'I am the one who…',
+    id: 'transport', kind: 'multi', prompt: 'Transport',
+    note: 'How will you get there? Pick all that apply.',
+    options: [{ label: 'Bike' }, { label: 'Bus' }, { label: 'Walk' }, { label: 'Car' }],
   },
 ];
 
@@ -135,14 +127,11 @@ const QUESTS = [
     proof: 'Take a photo with your new friend.' },
 ];
 
-// Pick a quest, biased toward the heart the traveler is guarding.
+// Pick a quest the universe sends next.
 function pickQuest(answers, exclude = []) {
-  const theme = answers && answers.love === 'Yes' ? 'connection' : null;
-  let pool = QUESTS.filter(q => !exclude.includes(q.id));
+  let pool = QUESTS.filter((q) => !exclude.includes(q.id));
   if (!pool.length) pool = QUESTS.slice();
-  const themed = theme ? pool.filter(q => q.theme === theme) : [];
-  const src = themed.length ? themed : pool;
-  return src[Math.floor(Math.random() * src.length)];
+  return pool[Math.floor(Math.random() * pool.length)];
 }
 
 // ─────────────────────────────────────────────────────────────
